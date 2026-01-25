@@ -1,0 +1,118 @@
+<!-- BY FRANS -->
+<!-- 2.0.0.3 -->
+<!-- 23.02.2026 -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Konsmon Chat </title>
+    <link rel="icon" href="gfx/radioactive_icon.png" type="image/x-icon">
+    <link rel = "stylesheet" href = "style.css">
+
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-storage-compat.js"></script>
+
+</head>
+<body>
+    <h1 onclick="location.reload()" style="width:96vw;max-width:1200px;margin:0px auto 0;color:var(--text); margin-left: 36px; cursor: pointer;" title="Refresh page">KONSMON CHAT WEBSITE</h1>
+    <div style="position:absolute; top:6px; right:40px; display:flex; gap:8px;">
+        <button id="btnSignin" class="btn btn-ghost">Sign in</button>
+        <button id="btnSignup" class="btn btn-primary">Sign up</button>
+    </div>
+    <div id="userPanel" style="position:absolute; top:4px; right:38px; display:none;">
+        <div id="userBox" style="background:var(--panel); border:1px solid var(--muted); padding:8px 14px; border-radius:8px; color:var(--text); cursor:pointer;">
+            Logged in as <strong id="currentUserNick"></strong>
+        </div>
+        <div id="userMenu" style="display:none; background:var(--card); border:1px solid var(--muted); border-radius:6px; margin-top:4px; padding:6px;">
+            <button id="logoutBtn" class="btn btn-ghost" style="width:100%;">Log out</button>
+        </div>
+    </div>
+
+
+    <div class="app">
+        <div class="sidebar">
+            <h2>CHAT LIST: </h2>
+            <div id="chatList" class="chat-list">Loading...</div>
+            <div class="sidebar-footer">
+                <button id="btnCreate" class="btn btn-primary">Create new</button>
+                <button id="btnRefresh" class="btn btn-ghost">Refresh</button>
+            </div>
+        </div>
+
+        <div class="main">
+            <div class="panel" id="mainPanel">
+
+                <div id="welcomeArea" style="width: 100%; display: flex; flex-direction: column; align-items: center; overflow-y: auto;">
+
+                    <h1 style="font-size: 4rem; margin: 20px 0 40px 0; color: var(--text); letter-spacing: 4px; text-align: center;">☢ KONSMON ☢</h1>
+
+                    <div class="welcome" style="margin: 0 auto 20px auto;">
+                        <h3>Choose a chat or create new one</h3>
+                        <p>Create a chat (name + password) or join an existing one by clicking it from the list on the left.</p>
+                        <div class="inputs">
+                            <button id="createQuick" class="btn btn-primary">Create new chat</button>
+                            <div style="align-self:center">— or —</div>
+                            <div style="display:flex;gap:6px;align-items:center">
+                                <input id="searchInput" placeholder="Search..." />
+                                <button id="searchBtn" class="btn btn-ghost">Search</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="welcome" style="margin: 0 auto; display: flex; flex-direction: column; align-items: center;">
+                        <h3>What is konsmon?</h3>
+                        <p style="line-height: 1.6; opacity: 0.9;">
+                            Konsmon is an unregulated chat website where users can send anything in their private or public chats without any registration, simply text as anons.
+                            You can create your own chat, make it public or private, there are no rules. For more info, visit the 'WEBSITE INFO' chat.
+                        </p>
+
+                        <img src="gfx/eye.png" alt="Konsmon Art"
+                             style="display: block; margin-top: 1px; max-width: 100%; height: auto; border-radius: 4px; opacity: 0.9;">
+                    </div>
+
+                </div>
+
+                <div id="chatArea" style="display:none;flex-direction:column;height:100%">
+                    <div class="chat-top">
+                        <div>
+                            <strong id="chatTitle">—</strong>
+                            <div id="chatSubtitle" class="meta">ID: —</div>
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:center">
+                            <button id="leaveBtn" class="btn btn-ghost">Leave</button>
+                            <button id="deleteBtn" class="btn" style="background:#b91c1c;color:white">Delete chat</button>
+                        </div>
+                    </div>
+
+                    <div id="messages" class="messages"></div>
+
+                    <div class="input-row">
+                        <input id="nicknameInput" class="nick-field" placeholder="Enter nick (optional)">
+                        <div class="msg-input">
+                            <textarea id="messageInput" placeholder="Type here ..."></textarea>
+                            <input id="imageInput" type="file" accept="image/*" style="display:none" />
+                            <button id="uploadBtn" class="btn btn-ghost" title="Upload image">&</button>
+                            <button id="sendBtn" class="send-btn">Send</button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div id="modal" class="modal-backdrop">
+        <div class="modal" id="modalContent"></div>
+    </div>
+
+
+
+    <script src="script.js">
+    </script>
+</body>
+</html>
