@@ -226,7 +226,8 @@
         .msg-input {
             flex: 1;
             display: flex;
-            gap: 8px
+            gap: 8px;
+            transition: box-shadow 180ms ease, transform 180ms ease;
         }
 
             .msg-input input {
@@ -347,3 +348,79 @@
             margin-top: 6px;
             box-shadow: 0 2px 6px rgba(0,0,0,0.25);
         }
+
+
+.msg-input textarea:hover {
+    transform: translateY(-3px);
+    border-radius: 8px;
+    border-color: rgba(14,165,255,0.12);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+    transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.msg-input > #uploadBtn:hover {
+    transform: translateY(-3px);
+    border-radius: 8px;
+    border-color: rgba(14,165,255,0.12);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+    transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+/* Custom scrollbars for supported elements */
+.messages, .chat-list, .modal, textarea, .panel {
+    /* Firefox */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(14,165,255,0.14) transparent;
+}
+
+/* WebKit (Chrome, Edge, Safari) */
+.messages::-webkit-scrollbar,
+.chat-list::-webkit-scrollbar,
+.modal::-webkit-scrollbar,
+textarea::-webkit-scrollbar,
+.panel::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.messages::-webkit-scrollbar-track,
+.chat-list::-webkit-scrollbar-track,
+.modal::-webkit-scrollbar-track,
+textarea::-webkit-scrollbar-track,
+.panel::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.messages::-webkit-scrollbar-thumb,
+.chat-list::-webkit-scrollbar-thumb,
+.modal::-webkit-scrollbar-thumb,
+textarea::-webkit-scrollbar-thumb,
+.panel::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(14,165,255,0.16), rgba(14,165,255,0.08));
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.45);
+}
+
+.messages::-webkit-scrollbar-thumb:hover,
+.chat-list::-webkit-scrollbar-thumb:hover,
+.modal::-webkit-scrollbar-thumb:hover,
+textarea::-webkit-scrollbar-thumb:hover,
+.panel::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(14,165,255,0.26), rgba(14,165,255,0.14));
+}
+
+.date-separator {
+    display: block;
+    text-align: center;
+    margin: 10px auto;
+    padding: 6px 12px;
+    max-width: 240px;
+    border-radius: 12px;
+    font-size: 12px;
+    color: var(--text);
+    opacity: 0.85;
+    background: rgba(255,255,255,0.02);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+}

@@ -341,14 +341,49 @@
             if (messagesRef) messagesRef.off();
             messagesRef = db.ref(`chats/${id}/messages`);
             let initialLoad = true;
+            let lastDate = null; // track last message date to insert separators
+
+            // helper to remove date separator if no messages remain for that date
+            function removeDateSeparatorIfEmpty(targetDate) {
+                let found = false;
+                messagesEl.querySelectorAll('div').forEach(d => {
+                    if (d.dataset && d.dataset.date === targetDate) found = true;
+                });
+                if (!found) {
+                    const sep = Array.from(messagesEl.querySelectorAll('.date-separator')).find(s => s.textContent === targetDate);
+                    if (sep) sep.remove();
+                }
+            }
 
             // Listen for additions
             messagesRef.on('child_added', snap => {
                 const m = snap.val();
                 const msgId = snap.key;
                 const msgWrap = document.createElement('div');
+
+                // time only for each message (keep showing time)
+                const timeStr = m.createdAt
+                    ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    : (m.time ? String(m.time).split(' ').pop() : '');
+
                 const meta = document.createElement('div'); meta.className = 'meta-line';
-                meta.textContent = `[${m.time || ''}] ${m.nickname || 'Anon'}`;
+                meta.textContent = `[${timeStr}] ${m.nickname || 'Anon'}`;
+
+                // date separator (centered) inserted above a message when day changes
+                const msgDate = new Date(m.createdAt || Date.now());
+                const dateOnly = msgDate.toLocaleDateString();
+                if (lastDate !== dateOnly) {
+                    const sep = document.createElement('div');
+                    sep.className = 'date-separator';
+                    sep.textContent = dateOnly;
+                    messagesEl.appendChild(sep);
+                    lastDate = dateOnly;
+                }
+
+                // mark wrapper with date so we can track remaining messages
+                msgWrap.className = 'msg-wrap';
+                msgWrap.dataset.date = dateOnly;
+
                 const bubble = document.createElement('div'); bubble.className = 'message';
 
                 // text
@@ -398,6 +433,8 @@
                                 db.ref(`chats/${currentChatId}/messages/${msgId}`).remove()
                                     .then(() => {
                                         msgWrap.remove();
+                                        // remove date separator if no other messages for that day remain
+                                        removeDateSeparatorIfEmpty(dateOnly);
                                     })
                                     .catch(e => alert('Error deleting message: ' + e.message));
                             } else {
@@ -582,7 +619,8 @@
                     nick = 'Anon' + Math.floor(1000 + Math.random() * 9000);
                 }
 
-                const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const now = new Date();
+                const t = now.toLocaleDateString() + ' ' + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
                 const msgData = {
                     nickname: nick,
