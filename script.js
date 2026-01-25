@@ -393,6 +393,12 @@
                     const img = document.createElement('img');
                     img.src = m.imageBase64;
                     bubble.appendChild(img);
+                    img.style.cursor = 'zoom-in';
+                    img.addEventListener('click', e => {
+                        e.stopPropagation();
+                        modalContent.innerHTML = `<img src="${img.src}" class="modal-image" />`;
+                        modal.style.display = 'flex';
+                    });
                     img.onload = () => {
                         if (initialLoad || (messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 300)) {
                             messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -564,6 +570,12 @@
                 preview.style.maxHeight = '100px';
                 preview.style.borderRadius = '6px';
                 preview.style.marginTop = '4px';
+                preview.style.cursor = 'zoom-in';
+                preview.onclick = (e) => {
+                    e.stopPropagation();
+                    modalContent.innerHTML = `<img src="${preview.src}" class="modal-image" />`;
+                    modal.style.display = 'flex';
+                };
                 messageInput.insertAdjacentElement('afterend', preview);
                 setTimeout(() => preview.remove(), 10000);
             };
@@ -657,6 +669,11 @@
         searchBtn.onclick = () => renderChatList(searchInput.value.trim()); searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') renderChatList(searchInput.value.trim()); });
 
         modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+
+        // close modal on Escape
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') closeModal();
+        });
 
 
 
