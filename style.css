@@ -81,6 +81,20 @@
             opacity: .75
         }
 
+        .chat-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .ping-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            background: #ef4444;
+            box-shadow: 0 0 0 2px rgba(239,68,68,0.18), 0 0 8px rgba(239,68,68,0.4);
+        }
+
         .sidebar-footer {
             margin-top: 10px;
             display: flex;
@@ -261,6 +275,33 @@
                 overflow-y: auto;
             }
 
+            .mention-box {
+                position: absolute;
+                left: 0;
+                right: 0;
+                bottom: 100%;
+                margin-bottom: 6px;
+                background: var(--card);
+                border: 1px solid var(--muted);
+                border-radius: 8px;
+                padding: 6px;
+                max-height: 180px;
+                overflow-y: auto;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+                z-index: 20;
+            }
+
+            .mention-item {
+                padding: 6px 8px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 14px;
+            }
+
+            .mention-item:hover {
+                background: rgba(14,165,255,0.12);
+            }
+
         .send-btn {
             padding: 10px 14px;
             border-radius: 6px;
@@ -321,18 +362,34 @@
             padding: 18px;
             border-radius: 8px;
             border: 1px solid var(--muted);
-            min-width: 320px
+            min-width: 320px;
+            text-align: left;
         }
 
             .modal h4 {
-                margin: 0 0 8px
+                margin: 0 0 8px;
+                text-align: center;
             }
 
             .modal .row {
-                display: flex;
-                flex-direction: column;
+                display: flex !important;
+                flex-direction: column !important;
                 gap: 6px;
-                margin-bottom: 8px
+                margin-bottom: 8px;
+                align-items: flex-start !important;
+                text-align: left;
+            }
+
+            .modal .row label {
+                display: block !important;
+                width: 100% !important;
+                text-align: left !important;
+            }
+
+            .modal .row input {
+                text-align: left !important;
+                width: 100% !important;
+                max-width: 100% !important;
             }
 
         .trash-icon {
@@ -547,18 +604,38 @@ textarea::-webkit-scrollbar-thumb:hover,
     -webkit-backdrop-filter: blur(6px);
     z-index: 9999;
 }
+
+
 .modal {
     /* keep modal content block-level so internal .row column layout works */
     max-width: 96vw;
     max-height: 96vh;
     padding: 20px;
     box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    overflow: hidden; /* clip any content that would escape the modal border */
 }
+
+.modal-viewer {
+    position: relative;
+    display: block;
+    /* fit to the modal content box; modal itself is max 96vw/96vh */
+    max-width: 100%;
+    max-height: 100%;
+}
+
 .modal-image {
-    max-width: calc(100vw - 40px);
-    max-height: calc(100vh - 40px);
+    /* scale image to fit the viewer box exactly, no extra scrolling */
+    max-width: 100%;
+    max-height: 100%;
     width: auto;
     height: auto;
+    object-fit: contain;
+    display: block;
+    margin: 0 auto;
     border-radius: 10px;
     box-shadow: 0 8px 30px rgba(0,0,0,0.6);
 }

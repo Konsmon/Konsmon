@@ -13,6 +13,7 @@
 
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
+        const usersRef = db.ref('users');
         // ADMIN PASSWORD
         let adminPassword = null;
 
@@ -54,8 +55,223 @@
         let currentChatRef = null;
         let messagesRef = null;
 
-        function showModal(html) { modalContent.innerHTML = html; modal.style.display = 'flex'; }
-        function closeModal() { modal.style.display = 'none'; modalContent.innerHTML = ''; }
+        let chatParticipants = new Set();
+        let mentionBox = null;
+        let mentionHideTimer = null;
+
+        let usersCacheByNickLower = {};
+        let usersNicknamesLower = [];
+        let usersNicknamesDisplay = [];
+        let usersCacheById = {};
+        let usersCacheLoaded = false;
+
+        function buildUsersCache(raw) {
+            usersCacheByNickLower = {};
+            usersCacheById = {};
+            usersNicknamesLower = [];
+            usersNicknamesDisplay = [];
+            Object.entries(raw || {}).forEach(([uid, data]) => {
+                const nick = String(data?.nick || '').trim();
+                if (!nick) return;
+                const lower = nick.toLowerCase();
+                if (!usersCacheByNickLower[lower]) usersCacheByNickLower[lower] = uid;
+                usersCacheById[uid] = { ...data, uid };
+                usersNicknamesLower.push(lower);
+                usersNicknamesDisplay.push(nick);
+            });
+            usersCacheLoaded = true;
+        }
+
+        async function ensureUsersCache() {
+            if (usersCacheLoaded) return;
+            const snap = await usersRef.once('value');
+            buildUsersCache(snap.val() || {});
+        }
+
+        usersRef.on('value', snap => {
+            buildUsersCache(snap.val() || {});
+        });
+
+        let _modalResizeHandler = null;
+
+        function adjustModalImage() {
+            const imgEl = modalContent.querySelector('.modal-image');
+            if (!imgEl) return;
+            const pad = 48; // total horizontal/vertical padding to leave
+            const availW = Math.max(100, window.innerWidth - pad);
+            const availH = Math.max(100, window.innerHeight - pad);
+            const natW = imgEl.naturalWidth || imgEl.width || availW;
+            const natH = imgEl.naturalHeight || imgEl.height || availH;
+            if (!natW || !natH) return;
+            const scale = Math.min(1, availW / natW, availH / natH);
+            if (scale < 1) {
+                imgEl.style.width = Math.floor(natW * scale) + 'px';
+                imgEl.style.height = Math.floor(natH * scale) + 'px';
+            } else {
+                imgEl.style.width = 'auto';
+                imgEl.style.height = 'auto';
+            }
+        }
+
+        function showModal(html) {
+            modalContent.innerHTML = html;
+            modal.style.display = 'flex';
+            // attach a resize handler so modal images are always fitted
+            if (!_modalResizeHandler) {
+                _modalResizeHandler = () => adjustModalImage();
+                window.addEventListener('resize', _modalResizeHandler);
+            }
+        }
+
+        function closeModal() {
+            modal.style.display = 'none';
+            modalContent.innerHTML = '';
+            if (_modalResizeHandler) {
+                window.removeEventListener('resize', _modalResizeHandler);
+                _modalResizeHandler = null;
+            }
+        }
+
+        function ensureMentionBox() {
+            if (mentionBox) return mentionBox;
+            mentionBox = document.createElement('div');
+            mentionBox.id = 'mentionBox';
+            mentionBox.className = 'mention-box';
+            mentionBox.style.display = 'none';
+            const msgInputWrap = messageInput?.closest('.msg-input');
+            if (msgInputWrap) {
+                msgInputWrap.style.position = 'relative';
+                msgInputWrap.appendChild(mentionBox);
+            }
+            return mentionBox;
+        }
+
+        function showMentionBox(items, query) {
+            const box = ensureMentionBox();
+            box.innerHTML = '';
+            if (!items || items.length === 0) {
+                box.style.display = 'none';
+                return;
+            }
+
+            items.forEach(nick => {
+                const item = document.createElement('div');
+                item.className = 'mention-item';
+                item.textContent = nick;
+                item.onclick = (e) => {
+                    e.preventDefault();
+                    insertMention(nick);
+                    hideMentionBox();
+                };
+                box.appendChild(item);
+            });
+
+            box.style.display = 'block';
+        }
+
+        function hideMentionBox() {
+            if (!mentionBox) return;
+            mentionBox.style.display = 'none';
+        }
+
+        function insertMention(nick) {
+            const input = messageInput;
+            if (!input) return;
+            const value = input.value;
+            const cursor = input.selectionStart || value.length;
+            const before = value.slice(0, cursor);
+            const after = value.slice(cursor);
+            const match = before.match(/@([^\s@]*)$/);
+            if (!match) return;
+            const startIdx = before.lastIndexOf('@');
+            const newBefore = before.slice(0, startIdx) + '@' + nick + ' ';
+            input.value = newBefore + after;
+            const newPos = newBefore.length;
+            input.setSelectionRange(newPos, newPos);
+            input.focus();
+        }
+
+        function handleMentionInput() {
+            if (!messageInput) return;
+            const value = messageInput.value;
+            const cursor = messageInput.selectionStart || value.length;
+            const before = value.slice(0, cursor);
+            const match = before.match(/@([^\s@]*)$/);
+
+            if (!match) {
+                hideMentionBox();
+                return;
+            }
+
+            const query = match[1].toLowerCase();
+            const participants = Array.from(chatParticipants || [])
+                .filter(n => n && usersCacheByNickLower[n.toLowerCase()]);
+            const filtered = participants
+                .filter(n => n.toLowerCase().includes(query))
+                .slice(0, 8);
+
+            showMentionBox(filtered, query);
+        }
+
+        function extractMentionedUserIds(text) {
+            if (!text) return [];
+            const ids = new Set();
+            const lowerText = text.toLowerCase();
+            const atIndices = [];
+            for (let i = 0; i < lowerText.length; i++) {
+                if (lowerText[i] === '@') atIndices.push(i);
+            }
+            if (atIndices.length === 0) return [];
+
+            // Sort nicknames by length (desc) so we match longest name first
+            const sortedNicks = [...usersNicknamesLower].sort((a, b) => b.length - a.length);
+
+            for (const idx of atIndices) {
+                const slice = lowerText.slice(idx + 1);
+                let matchedNick = null;
+
+                for (const nickLower of sortedNicks) {
+                    if (slice.startsWith(nickLower)) {
+                        // Ensure mention ends on boundary (space, punctuation, end)
+                        const endPos = idx + 1 + nickLower.length;
+                        const nextChar = lowerText[endPos] || '';
+                        if (!nextChar || /[\s.,!?;:()\[\]{}"'<>]/.test(nextChar)) {
+                            matchedNick = nickLower;
+                            break;
+                        }
+                    }
+                }
+
+                if (matchedNick) {
+                    const uid = usersCacheByNickLower[matchedNick];
+                    if (uid) ids.add(uid);
+                }
+            }
+
+            return Array.from(ids);
+        }
+
+        async function resolveMentionedUserIds(text) {
+            await ensureUsersCache();
+            return extractMentionedUserIds(text);
+        }
+
+        function addPingsForUsers(chatId, userIds, senderNick, senderUid) {
+            if (!chatId || !userIds || userIds.length === 0) return;
+            userIds.forEach(uid => {
+                if (senderUid && uid === senderUid) return;
+                const pingRef = db.ref(`chats/${chatId}/pings/${uid}`);
+                pingRef.transaction(prev => {
+                    const next = prev && typeof prev === 'object' ? prev : {};
+                    const count = Number(next.count || 0) + 1;
+                    return {
+                        count,
+                        lastAt: Date.now(),
+                        lastBy: senderNick || 'Anon'
+                    };
+                });
+            });
+        }
         function showAlert(msg, cb) {
             showModal(`<div style="min-width:260px"><p style="margin:0 0 8px">${escapeHtml(msg)}</p><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px"><button id="alertOk" class="btn btn-primary">OK</button></div></div>`);
             const btn = document.getElementById('alertOk');
@@ -77,7 +293,20 @@
             if (filtered.length === 0) { chatListEl.textContent = 'No chats found.'; return; }
             filtered.forEach(([id, chat]) => {
                 const el = document.createElement('div'); el.className = 'chat-item';
-                el.innerHTML = `<div style="min-width:0"><div class=\"chat-title\">${escapeHtml(chat.name)}</div><div class=\"chat-meta\">${chat.desc || ''}</div></div><div style=\"text-align:right;font-size:12px;color:rgba(255,255,255,.75)\">ID:${id.slice(0, 6)}</div>`;
+                const pingCount = currentUser && chat?.pings && chat.pings[currentUser.uid]
+                    ? Number(chat.pings[currentUser.uid].count || 0)
+                    : 0;
+                const pingDot = pingCount > 0 ? '<span class="ping-dot" title="Mention"></span>' : '';
+                el.innerHTML = `
+                    <div style="min-width:0">
+                        <div class="chat-title">${escapeHtml(chat.name)}</div>
+                        <div class="chat-meta">${chat.desc || ''}</div>
+                    </div>
+                    <div class="chat-right">
+                        <div style="text-align:right;font-size:12px;color:rgba(255,255,255,.75)">ID:${id.slice(0, 6)}</div>
+                        ${pingDot}
+                    </div>
+                `;
                 el.onclick = () => attemptJoin(id);
                 chatListEl.appendChild(el);
             });
@@ -87,9 +316,18 @@
         function openCreateModal() {
             showModal(`
                                             <h4>Create new chat</h4>
-                                            <div class="row"><label>Name</label><input id="newName" placeholder="e.g. my_new_chat" /></div>
-                                            <div class="row"><label>Password</label><input id="newPass" placeholder="optional password" type="password" /></div>
-                                            <div class="row"><label>Delete password</label><input id="newDeletePass" placeholder="password to delete chat" type="password" /></div>
+                                            <div class="row">
+                                                <label>Name</label>
+                                                <input id="newName" placeholder="e.g. my_new_chat" />
+                                            </div>
+                                            <div class="row">
+                                                <label>Password</label>
+                                                <input id="newPass" placeholder="optional password" type="password" />
+                                            </div>
+                                            <div class="row">
+                                                <label>Delete password</label>
+                                                <input id="newDeletePass" placeholder="password to delete chat" type="password" />
+                                            </div>
                                             <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
                                             <button id="cancelCreate" class="btn btn-ghost">Cancel</button>
                                             <button id="confirmCreate" class="btn btn-primary">Create</button>
@@ -143,7 +381,6 @@
                     const pass = String(document.getElementById('signupPass').value || '').trim();
                     if (!nick || !pass) return showAlert('Please fill in all fields');
 
-                    const usersRef = db.ref('users');
                     usersRef.orderByChild('nick').equalTo(nick).once('value', snap => {
                         if (snap.exists()) {
                             showAlert('This username is already taken');
@@ -194,8 +431,7 @@
                     return;
                 }
 
-                const usersRef = db.ref('users');
-                usersRef.orderByChild('nick').equalTo(nick).once('value', snap => {
+                    usersRef.orderByChild('nick').equalTo(nick).once('value', snap => {
                     if (!snap.exists()) {
                         showAlert('User not found');
                         return;
@@ -342,6 +578,15 @@
             chatArea.style.display = 'flex';
             messagesEl.innerHTML = '';
 
+            ensureUsersCache().catch(() => {});
+
+            chatParticipants = new Set();
+            hideMentionBox();
+
+            if (currentUser && currentUser.uid) {
+                db.ref(`chats/${id}/pings/${currentUser.uid}`).remove();
+            }
+
             // Detach previous
             if (messagesRef) messagesRef.off();
             messagesRef = db.ref(`chats/${id}/messages`);
@@ -365,6 +610,10 @@
                 const m = snap.val();
                 const msgId = snap.key;
                 const msgWrap = document.createElement('div');
+
+                if (m?.nickname) {
+                    chatParticipants.add(String(m.nickname));
+                }
 
                 // time only for each message (keep showing time)
                 const timeStr = m.createdAt
@@ -429,6 +678,11 @@
                             </div>
                         `;
                         modal.style.display = 'flex';
+                        const modalImg = modalContent.querySelector('.modal-image');
+                        if (modalImg) {
+                            modalImg.onload = () => adjustModalImage();
+                            if (modalImg.complete) adjustModalImage();
+                        }
                     });
                     img.onload = () => {
                         if (initialLoad || (messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 300)) {
@@ -508,7 +762,7 @@
             });
         }
 
-        leaveBtn.onclick = () => { if (!currentChatId) return; if (!confirm('Leave chat?')) return; detachChat(); }
+        leaveBtn.onclick = () => { if (!currentChatId) return; if (!showAlert('Leave chat?')) return; detachChat(); }
         function detachChat() { if (messagesRef) messagesRef.off(); currentChatId = null; currentChatRef = null; messagesEl.innerHTML = ''; chatArea.style.display = 'none'; welcomeArea.style.display = 'block'; chatTitle.textContent = '—'; chatSubtitle.textContent = '—'; }
 
 
@@ -524,8 +778,8 @@
                 showModal(`
                             <h4>Delete chat: ${escapeHtml(chat.name)}</h4>
                             <div class="row">
-                            <label>Delete password</label>
-                            <input id="deletePassInput" type="password" placeholder="Enter delete or admin password" />
+                                <label>Delete password</label>
+                                <input id="deletePassInput" type="password" placeholder="Enter delete or admin password" />
                             </div>
                             <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
                             <button id="cancelDelete" class="btn btn-ghost">Cancel</button>
@@ -637,6 +891,11 @@
                             </div>
                         `;
                         modal.style.display = 'flex';
+                        const modalImg2 = modalContent.querySelector('.modal-image');
+                        if (modalImg2) {
+                            modalImg2.onload = () => adjustModalImage();
+                            if (modalImg2.complete) adjustModalImage();
+                        }
                     };
                     messageInput.insertAdjacentElement('afterend', preview);
                     setTimeout(() => preview.remove(), 10000);
@@ -717,6 +976,8 @@
                 const now = new Date();
                 const t = now.toLocaleDateString() + ' ' + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+                const mentionedUserIds = await resolveMentionedUserIds(text);
+
                 const msgData = {
                     nickname: nick,
                     text: text || null,
@@ -749,6 +1010,9 @@
                         if (existingChip) existingChip.remove();
                         const existingPreview = document.querySelector('#messageInput + img');
                         if (existingPreview) existingPreview.remove();
+                        if (mentionedUserIds.length > 0) {
+                            addPingsForUsers(currentChatId, mentionedUserIds, nick, currentUser ? currentUser.uid : null);
+                        }
                     })
                     .catch(e => showAlert('Error: ' + e.message));
             }
@@ -762,6 +1026,13 @@
                 e.preventDefault();
                 sendMessage();
             }
+        });
+
+        messageInput.addEventListener('input', handleMentionInput);
+        messageInput.addEventListener('click', handleMentionInput);
+        messageInput.addEventListener('blur', () => {
+            if (mentionHideTimer) clearTimeout(mentionHideTimer);
+            mentionHideTimer = setTimeout(() => hideMentionBox(), 150);
         });
 
 
