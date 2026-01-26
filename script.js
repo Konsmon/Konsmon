@@ -56,6 +56,11 @@
 
         function showModal(html) { modalContent.innerHTML = html; modal.style.display = 'flex'; }
         function closeModal() { modal.style.display = 'none'; modalContent.innerHTML = ''; }
+        function showAlert(msg, cb) {
+            showModal(`<div style="min-width:260px"><p style="margin:0 0 8px">${escapeHtml(msg)}</p><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px"><button id="alertOk" class="btn btn-primary">OK</button></div></div>`);
+            const btn = document.getElementById('alertOk');
+            if (btn) btn.onclick = () => { closeModal(); if (typeof cb === 'function') cb(); };
+        }
         function escapeHtml(text) { return String(text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
 
@@ -96,8 +101,8 @@
                 const name = String(document.getElementById('newName').value || '').trim();
                 const pass = String(document.getElementById('newPass').value || '');
                 const deletePass = String(document.getElementById('newDeletePass').value || '');
-                if (!name) { alert('Provide chat name'); return; }
-                if (!deletePass) { alert('Provide delete password'); return; }
+                if (!name) { showAlert('Provide chat name'); return; }
+                if (!deletePass) { showAlert('Provide delete password'); return; }
                 const newRef = chatsRef.push();
                 newRef.set({
                     name: name,
@@ -108,7 +113,7 @@
                 }).then(() => {
                     closeModal();
                     attemptJoin(newRef.key, true, pass);
-                }).catch(e => alert('Error: ' + e.message));
+                }).catch(e => showAlert('Error: ' + e.message));
             }
         }
 
@@ -136,16 +141,16 @@
                 document.getElementById('confirmSignup').onclick = () => {
                     const nick = String(document.getElementById('signupNick').value || '').trim();
                     const pass = String(document.getElementById('signupPass').value || '').trim();
-                    if (!nick || !pass) return alert('Please fill in all fields');
+                    if (!nick || !pass) return showAlert('Please fill in all fields');
 
                     const usersRef = db.ref('users');
                     usersRef.orderByChild('nick').equalTo(nick).once('value', snap => {
                         if (snap.exists()) {
-                            alert('This username is already taken');
+                            showAlert('This username is already taken');
                         } else {
                             usersRef.push({ nick, password: pass, createdAt: Date.now() })
-                                .then(() => { alert('Account created!'); closeModal(); })
-                                .catch(e => alert('Error: ' + e.message));
+                                .then(() => { showAlert('Account created!'); closeModal(); })
+                                .catch(e => showAlert('Error: ' + e.message));
                         }
                     });
                 };
@@ -185,14 +190,14 @@
                 const nick = String(document.getElementById('signinNick').value || '').trim();
                 const pass = String(document.getElementById('signinPass').value || '').trim();
                 if (!nick || !pass) {
-                    alert('Please fill in both fields');
+                    showAlert('Please fill in both fields');
                     return;
                 }
 
                 const usersRef = db.ref('users');
                 usersRef.orderByChild('nick').equalTo(nick).once('value', snap => {
                     if (!snap.exists()) {
-                        alert('User not found');
+                        showAlert('User not found');
                         return;
                     }
 
@@ -203,7 +208,7 @@
                         updateUserUI();
                         closeModal();
                     } else {
-                        alert('Incorrect password');
+                        showAlert('Incorrect password');
                     }
                 });
             };
@@ -237,7 +242,7 @@
             currentUser = null;
             updateUserUI();
             userMenu.style.display = 'none';
-            alert('Logged out successfully');
+            showAlert('Logged out successfully');
         };
 
 
@@ -259,7 +264,7 @@
         function attemptJoin(id, skipPrompt = false, knownPass = '') {
             const chat = chatsCache[id];
             if (!chat) {
-                alert('Chat not found');
+                showAlert('Chat not found');
                 return;
             }
 
@@ -303,12 +308,12 @@
                                 closeModal();
                                 joinChat(id, p);
                             } else {
-                                alert('Wrong password');
+                                showAlert('Wrong password');
                             }
                         })
-                        .catch(e => {
+                            .catch(e => {
                             console.error(e);
-                            alert('Error: ' + e.message);
+                            showAlert('Error: ' + e.message);
                         });
                 } else {
 
@@ -316,7 +321,7 @@
                         closeModal();
                         joinChat(id, p);
                     } else {
-                        alert('Wrong password');
+                        showAlert('Wrong password');
                     }
                 }
             };
@@ -386,9 +391,30 @@
 
                 const bubble = document.createElement('div'); bubble.className = 'message';
 
-                // text
+                // text (make URLs clickable)
                 if (m.text) {
-                    bubble.textContent = m.text;
+                    // create nodes where URLs become anchors, using text nodes for safety
+                    const urlRegex = /(?:https?:\/\/[^\s]+)|(?:www\.[^\s]+)/g;
+                    let lastIndex = 0;
+                    const text = String(m.text || '');
+                    let match;
+                    while ((match = urlRegex.exec(text)) !== null) {
+                        const idx = match.index;
+                        if (idx > lastIndex) {
+                            bubble.appendChild(document.createTextNode(text.slice(lastIndex, idx)));
+                        }
+                        let url = match[0];
+                        const href = url.startsWith('http') ? url : 'http://' + url;
+                        const a = document.createElement('a');
+                        a.href = href;
+                        a.textContent = url;
+                        a.target = '_blank';
+                        a.rel = 'noopener noreferrer';
+                        a.className = 'file-link';
+                        bubble.appendChild(a);
+                        lastIndex = idx + url.length;
+                    }
+                    if (lastIndex < text.length) bubble.appendChild(document.createTextNode(text.slice(lastIndex)));
                 } else if (m.imageBase64) {
                     const img = document.createElement('img');
                     img.src = m.imageBase64;
@@ -396,7 +422,12 @@
                     img.style.cursor = 'zoom-in';
                     img.addEventListener('click', e => {
                         e.stopPropagation();
-                        modalContent.innerHTML = `<img src="${img.src}" class="modal-image" />`;
+                        modalContent.innerHTML = `
+                            <div class="modal-viewer">
+                                <a class="modal-download" href="${img.src}" download="konsmon-image.png" title="Download image">⬇</a>
+                                <img src="${img.src}" class="modal-image" />
+                            </div>
+                        `;
                         modal.style.display = 'flex';
                     });
                     img.onload = () => {
@@ -404,6 +435,15 @@
                             messagesEl.scrollTop = messagesEl.scrollHeight;
                         }
                     }
+                } else if (m.fileBase64) {
+                    const fileLink = document.createElement('a');
+                    fileLink.href = m.fileBase64;
+                    fileLink.target = '_blank';
+                    fileLink.rel = 'noopener noreferrer';
+                    fileLink.className = 'file-link';
+                    fileLink.textContent = (m.fileName || 'file');
+                    fileLink.download = m.fileName || '';
+                    bubble.appendChild(fileLink);
                 }
 
                 bubble.addEventListener('click', () => {
@@ -442,9 +482,9 @@
                                         // remove date separator if no other messages for that day remain
                                         removeDateSeparatorIfEmpty(dateOnly);
                                     })
-                                    .catch(e => alert('Error deleting message: ' + e.message));
+                                    .catch(e => showAlert('Error deleting message: ' + e.message));
                             } else {
-                                alert('You can delete only your messages.');
+                                showAlert('You can delete only your messages.');
                             }
                         });
                     };
@@ -479,19 +519,19 @@
         deleteBtn.onclick = () => {
             if (!currentChatId) return;
             const chat = chatsCache[currentChatId];
-            if (!chat) { alert('Chat data not found'); return; }
+            if (!chat) { showAlert('Chat data not found'); return; }
 
-            showModal(`
-                                    <h4>Delete chat: ${escapeHtml(chat.name)}</h4>
-                                    <div class="row">
-                                    <label>Delete password</label>
-                                    <input id="deletePassInput" type="password" placeholder="Enter delete or admin password" />
-                                    </div>
-                                    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
-                                    <button id="cancelDelete" class="btn btn-ghost">Cancel</button>
-                                    <button id="confirmDelete" class="btn btn-primary" style="background:#b91c1c;color:white">Delete</button>
-                                    </div>
-                            `       );
+                showModal(`
+                            <h4>Delete chat: ${escapeHtml(chat.name)}</h4>
+                            <div class="row">
+                            <label>Delete password</label>
+                            <input id="deletePassInput" type="password" placeholder="Enter delete or admin password" />
+                            </div>
+                            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+                            <button id="cancelDelete" class="btn btn-ghost">Cancel</button>
+                            <button id="confirmDelete" class="btn btn-primary" style="background:#b91c1c;color:white">Delete</button>
+                            </div>
+                        `       );
 
             document.getElementById('cancelDelete').onclick = closeModal;
             document.getElementById('confirmDelete').onclick = () => {
@@ -500,12 +540,11 @@
                 // Global admin password 
                 if (adminPassword && enteredPass === adminPassword) {
                     db.ref('chats/' + currentChatId).remove()
-                        .then(() => {
-                            alert('Chat deleted');
-                            closeModal();
-                            detachChat();
-                        })
-                        .catch(e => alert('Error: ' + e.message));
+                                .then(() => {
+                                        closeModal();
+                                        showAlert('Chat deleted', detachChat);
+                                    })
+                                    .catch(e => showAlert('Error: ' + e.message));
                     return;
                 }
 
@@ -517,28 +556,26 @@
                             if (isAdmin || enteredPass === (chat.deletePassword || '')) {
                                 db.ref('chats/' + currentChatId).remove()
                                     .then(() => {
-                                        alert('Chat deleted');
-                                        closeModal();
-                                        detachChat();
-                                    })
-                                    .catch(e => alert('Error: ' + e.message));
+                                            closeModal();
+                                            showAlert('Chat deleted', detachChat);
+                                        })
+                                    .catch(e => showAlert('Error: ' + e.message));
                             } else {
-                                alert('Wrong delete password');
+                                showAlert('Wrong delete password');
                             }
                         })
-                        .catch(e => alert('Error: ' + e.message));
+                        .catch(e => showAlert('Error: ' + e.message));
                 } else {
 
                     if (enteredPass === (chat.deletePassword || '')) {
                         db.ref('chats/' + currentChatId).remove()
                             .then(() => {
-                                alert('Chat deleted');
-                                closeModal();
-                                detachChat();
+                                        closeModal();
+                                        showAlert('Chat deleted', detachChat);
                             })
-                            .catch(e => alert('Error: ' + e.message));
+                                    .catch(e => showAlert('Error: ' + e.message));
                     } else {
-                        alert('Wrong delete password');
+                        showAlert('Wrong delete password');
                     }
                 }
             };
@@ -551,7 +588,11 @@
         // Send message
         const uploadBtn = document.getElementById('uploadBtn');
         const imageInput = document.getElementById('imageInput');
+        const MAX_FILE_SIZE = 200 * 1024; // 200 KB limit
         let selectedImageBase64 = null;
+        let selectedFileBase64 = null;
+        let selectedFileName = null;
+        let selectedFileType = null;
 
         uploadBtn.onclick = () => {
             imageInput.click();
@@ -561,42 +602,84 @@
             const file = e.target.files[0];
             if (!file) return;
 
-            const reader = new FileReader();
-            reader.onload = function (ev) {
-                selectedImageBase64 = ev.target.result;
-                const preview = document.createElement('img');
-                preview.src = selectedImageBase64;
-                preview.style.maxWidth = '100px';
-                preview.style.maxHeight = '100px';
-                preview.style.borderRadius = '6px';
-                preview.style.marginTop = '4px';
-                preview.style.cursor = 'zoom-in';
-                preview.onclick = (e) => {
-                    e.stopPropagation();
-                    modalContent.innerHTML = `<img src="${preview.src}" class="modal-image" />`;
-                    modal.style.display = 'flex';
+            // file size check
+            if (file.size > MAX_FILE_SIZE) {
+                showAlert('Selected file is too large (' + (file.size / 1024).toFixed(1) + ' KB). Maximum allowed is 200 KB.');
+                e.target.value = '';
+                return;
+            }
+
+            // clear previous selections
+            selectedImageBase64 = null;
+            selectedFileBase64 = null;
+            selectedFileName = null;
+            selectedFileType = null;
+            const existingPreview = document.querySelector('#messageInput + img, #messageInput + .file-preview');
+            if (existingPreview) existingPreview.remove();
+
+            if (file.type && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = function (ev) {
+                    selectedImageBase64 = ev.target.result;
+                    const preview = document.createElement('img');
+                    preview.src = selectedImageBase64;
+                    preview.style.maxWidth = '100px';
+                    preview.style.maxHeight = '100px';
+                    preview.style.borderRadius = '6px';
+                    preview.style.marginTop = '4px';
+                    preview.style.cursor = 'zoom-in';
+                    preview.onclick = (ev2) => {
+                        ev2.stopPropagation();
+                        modalContent.innerHTML = `
+                            <div class="modal-viewer">
+                                <a class="modal-download" href="${preview.src}" download="konsmon-image.png" title="Download image">⬇</a>
+                                <img src="${preview.src}" class="modal-image" />
+                            </div>
+                        `;
+                        modal.style.display = 'flex';
+                    };
+                    messageInput.insertAdjacentElement('afterend', preview);
+                    setTimeout(() => preview.remove(), 10000);
                 };
-                messageInput.insertAdjacentElement('afterend', preview);
-                setTimeout(() => preview.remove(), 10000);
-            };
-            reader.readAsDataURL(file);
+                reader.readAsDataURL(file);
+            } else {
+                // non-image file: read as DataURL (base64) and show a small file chip
+                const reader = new FileReader();
+                reader.onload = function (ev2) {
+                    selectedFileBase64 = ev2.target.result;
+                    selectedFileName = file.name;
+                    selectedFileType = file.type || 'application/octet-stream';
+                    const chip = document.createElement('div');
+                    chip.className = 'file-preview';
+                    chip.textContent = file.name;
+                    const dl = document.createElement('a');
+                    dl.textContent = ' ⬇';
+                    dl.href = selectedFileBase64;
+                    dl.download = file.name;
+                    dl.style.marginLeft = '8px';
+                    chip.appendChild(dl);
+                    messageInput.insertAdjacentElement('afterend', chip);
+                    setTimeout(() => chip.remove(), 10000);
+                };
+                reader.readAsDataURL(file);
+            }
         };
 
         function sendMessage() {
             if (!currentChatId) {
-                alert('Join a chat first');
+                showAlert('Join a chat first');
                 return;
             }
             const chatSettings = chatsCache[currentChatId];
             if (chatSettings && chatSettings.allow_chat !== 1) {
                 if (!currentUser) {
-                    alert("Only admins can write in this chat.");
+                    showAlert("Only admins can write in this chat.");
                     return;
                 }
                 db.ref(`users/${currentUser.uid}`).once('value').then(snap => {
                     const isAdmin = snap.val()?.admin === 1;
                     if (!isAdmin) {
-                        alert("Only admins can write in this chat.");
+                        showAlert("Only admins can write in this chat.");
                         return;
                     } else {
                         actuallySendMessage(); 
@@ -607,11 +690,11 @@
 
             actuallySendMessage(); 
 
-            function actuallySendMessage() {
+            async function actuallySendMessage() {
                 let text = String(messageInput.value || '').trim();
                 const nickInputVal = String(document.getElementById('nicknameInput').value || '').trim();
 
-                if (!text && !selectedImageBase64) return;
+                if (!text && !selectedImageBase64 && !selectedFileBase64) return;
 
                 const wrapLimit = 800;
                 if (text.length > wrapLimit) {
@@ -637,20 +720,37 @@
                 const msgData = {
                     nickname: nick,
                     text: text || null,
-                    imageBase64: selectedImageBase64 || null,
+                    imageBase64: null,
+                    fileBase64: null,
+                    fileName: null,
+                    fileType: null,
                     time: t,
                     createdAt: Date.now(),
                     userId: currentUser ? currentUser.uid : null
                 };
+                // If a non-image file was selected, embed base64 into message
+                if (selectedFileBase64) {
+                    msgData.fileBase64 = selectedFileBase64;
+                    msgData.fileName = selectedFileName;
+                    msgData.fileType = selectedFileType;
+                }
+
+                // If an image was selected, keep the base64 embed
+                if (selectedImageBase64) msgData.imageBase64 = selectedImageBase64;
 
                 db.ref(`chats/${currentChatId}/messages`).push(msgData)
                     .then(() => {
                         messageInput.value = '';
                         selectedImageBase64 = null;
+                        selectedFileBase64 = null;
+                        selectedFileName = null;
+                        selectedFileType = null;
+                        const existingChip = document.querySelector('#messageInput + .file-preview');
+                        if (existingChip) existingChip.remove();
                         const existingPreview = document.querySelector('#messageInput + img');
                         if (existingPreview) existingPreview.remove();
                     })
-                    .catch(e => alert('Error: ' + e.message));
+                    .catch(e => showAlert('Error: ' + e.message));
             }
 
         }
@@ -681,3 +781,125 @@
 
         // Initial
         renderChatList();
+
+
+        // Initialize wavy logo: split text into spans and add hover handlers
+        (function initWavyLogo(){
+            try {
+                const el = document.getElementById('siteLogo');
+                if (!el) return;
+                const txt = String(el.textContent || '').trim();
+                el.innerHTML = '';
+                const spans = [];
+                for (let i = 0; i < txt.length; i++) {
+                    const ch = txt[i];
+                    const sp = document.createElement('span');
+                    sp.textContent = ch === ' ' ? '\u00A0' : ch;
+                    sp.dataset.i = String(i);
+                    el.appendChild(sp);
+                    spans.push(sp);
+                }
+                el.classList.add('wavy-logo');
+
+                // On hover over a letter, lift neighboring letters with decay
+                spans.forEach((s, idx) => {
+                    s.addEventListener('mouseenter', () => {
+                        spans.forEach((ss, j) => {
+                            const dist = Math.abs(j - idx);
+                            // compute lift: closer letters lift more
+                            const maxLift = 18; // px
+                            const step = 5; // px per distance
+                            const lift = Math.max(0, maxLift - dist * step);
+                            if (lift > 0) {
+                                ss.style.transform = `translateY(-${lift}px)`;
+                                ss.style.transitionDelay = `${dist * 30}ms`;
+                            } else {
+                                ss.style.transform = '';
+                                ss.style.transitionDelay = '';
+                            }
+                        });
+                    });
+                    s.addEventListener('mouseleave', () => {
+                        spans.forEach((ss) => {
+                            ss.style.transform = '';
+                            ss.style.transitionDelay = '';
+                        });
+                    });
+                });
+            } catch (e) { console.warn('wavy logo init failed', e); }
+        })();
+
+        // Mobile menu: create helpers and hook the mobile menu button
+        (function initMobileMenu(){
+            try {
+                const btn = document.getElementById('mobileMenuBtn');
+                const body = document.body;
+                function createOverlay() {
+                    let ov = document.getElementById('mobileMenuOverlay');
+                    if (!ov) {
+                        ov = document.createElement('div');
+                        ov.id = 'mobileMenuOverlay';
+                        ov.style.position = 'fixed';
+                        ov.style.inset = '0';
+                        ov.style.background = 'rgba(0,0,0,0.35)';
+                        ov.style.zIndex = '1500';
+                        document.body.appendChild(ov);
+                        ov.addEventListener('click', closeMobileMenu);
+                    }
+                    return ov;
+                }
+                function openMobileMenu() {
+                    body.classList.add('sidebar-open');
+                    const ov = createOverlay();
+                    ov.style.display = 'block';
+                }
+                function closeMobileMenu() {
+                    body.classList.remove('sidebar-open');
+                    const ov = document.getElementById('mobileMenuOverlay');
+                    if (ov) ov.style.display = 'none';
+                }
+
+                // expose for other code
+                window.openMobileMenu = openMobileMenu;
+                window.closeMobileMenu = closeMobileMenu;
+
+                if (btn) btn.addEventListener('click', () => {
+                    if (document.body.classList.contains('sidebar-open')) closeMobileMenu(); else openMobileMenu();
+                });
+
+                // close sidebar when joining a chat (so content is visible)
+                const originalAttemptJoin = window.attemptJoin;
+                if (typeof originalAttemptJoin === 'function') {
+                    window.attemptJoin = function(id, skipPrompt, knownPass) {
+                        try { closeMobileMenu(); } catch (e) {}
+                        return originalAttemptJoin(id, skipPrompt, knownPass);
+                    };
+                } else {
+                    // fallback: monkey-patch renderChatList onclicks to close menu after join
+                    // This will be applied each time renderChatList runs as it re-creates items.
+                }
+
+                // ensure we close sidebar on resize to larger screens
+                let rt = null;
+                window.addEventListener('resize', () => {
+                    clearTimeout(rt); rt = setTimeout(() => {
+                        if (window.innerWidth > 900) closeMobileMenu();
+                    }, 120);
+                });
+            } catch (e) { console.warn('mobile menu init failed', e); }
+        })();
+
+        // Mobile detection: add `is-mobile` class and show mobile menu button when appropriate
+        (function initMobileClass(){
+            try {
+                const apply = () => {
+                        const small = window.innerWidth <= 900;
+                        // Treat "mobile" only by viewport width so desktop touch devices don't trigger mobile layout
+                        const mobile = small;
+                        if (mobile) document.body.classList.add('is-mobile'); else document.body.classList.remove('is-mobile');
+                };
+                apply();
+                let to = null;
+                window.addEventListener('resize', () => { clearTimeout(to); to = setTimeout(apply, 120); });
+            } catch (e) { console.warn('initMobileClass failed', e); }
+        })();

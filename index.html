@@ -19,8 +19,9 @@
 
 </head>
 <body>
-    <h1 onclick="location.reload()" style="width:96vw;max-width:1200px;margin:0px auto 0;color:var(--text); margin-left: 36px; cursor: pointer;" title="Refresh page">KONSMON CHAT WEBSITE</h1>
-    <div style="position:absolute; top:6px; right:40px; display:flex; gap:8px;">
+    <h1 id="siteLogo" class="wavy-logo" onclick="location.reload()" style="width:96vw;max-width:1200px;margin:5px auto 0;color:var(--text); margin-left: 36px; cursor: pointer;" title="Refresh page">KONSMON CHAT WEBSITE</h1>
+    <div id="topControls" style="position:absolute; top:6px; right:40px; display:flex; gap:8px; align-items:center;">
+        <button id="mobileMenuBtn" class="btn btn-ghost">☰</button>
         <button id="btnSignin" class="btn btn-ghost">Sign in</button>
         <button id="btnSignup" class="btn btn-primary">Sign up</button>
     </div>
@@ -95,7 +96,7 @@
                         <input id="nicknameInput" class="nick-field" placeholder="Enter nick (optional)">
                         <div class="msg-input">
                             <textarea id="messageInput" placeholder="Type here ..."></textarea>
-                            <input id="imageInput" type="file" accept="image/*" style="display:none" />
+                            <input id="imageInput" type="file" accept="*/*" style="display:none" />
                             <button id="uploadBtn" class="btn btn-ghost" title="Upload image">&</button>
                             <button id="sendBtn" class="send-btn">Send</button>
                         </div>
