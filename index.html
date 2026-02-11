@@ -9,13 +9,15 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Konsmon Chat </title>
     <link rel="icon" href="gfx/radioactive_icon.png" type="image/x-icon">
-    <link rel = "stylesheet" href = "style.css">
+    <link rel="stylesheet" href="style.css">
 
 
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-storage-compat.js"></script>
+
+    <script crossorigin src="https://unpkg.com/@daily-co/daily-js"></script>
 
 </head>
 <body>
@@ -37,7 +39,12 @@
 
     <div class="app">
         <div class="sidebar">
-            <h2>CHAT LIST: </h2>
+            <h2 style="margin-bottom: 4px;">VOICE CHATS: </h2>
+            <div id="voiceChatList" class="chat-list" style="flex: 0 0 auto; max-height: 40%; margin-bottom: 10px;"></div>
+
+            <hr style="border: 0; border-top: 1px solid var(--muted); margin: 0 6px 10px 6px;">
+
+            <h2 style="margin-top: 0;">TEXT CHATS: </h2>
             <div id="chatList" class="chat-list">Loading...</div>
             <div class="sidebar-footer">
                 <button id="btnCreate" class="btn btn-primary">Create new</button>
