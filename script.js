@@ -837,8 +837,6 @@
 
 
 
-
-
         // Send message
         const uploadBtn = document.getElementById('uploadBtn');
         const imageInput = document.getElementById('imageInput');
@@ -1047,12 +1045,8 @@
         });
 
 
-
-
-
         // Initial
         renderChatList();
-
 
         // Initialize wavy logo: split text into spans and add hover handlers
         (function initWavyLogo(){
@@ -1077,7 +1071,6 @@
                     s.addEventListener('mouseenter', () => {
                         spans.forEach((ss, j) => {
                             const dist = Math.abs(j - idx);
-                            // compute lift: closer letters lift more
                             const maxLift = 18; // px
                             const step = 5; // px per distance
                             const lift = Math.max(0, maxLift - dist * step);
@@ -1100,8 +1093,8 @@
             } catch (e) { console.warn('wavy logo init failed', e); }
         })();
 
-        // Mobile menu: create helpers and hook the mobile menu button
-        (function initMobileMenu(){
+        // Mobile menu
+        (function initMobileMenu() {
             try {
                 const btn = document.getElementById('mobileMenuBtn');
                 const body = document.body;
@@ -1138,39 +1131,421 @@
                     if (document.body.classList.contains('sidebar-open')) closeMobileMenu(); else openMobileMenu();
                 });
 
-                // close sidebar when joining a chat (so content is visible)
                 const originalAttemptJoin = window.attemptJoin;
                 if (typeof originalAttemptJoin === 'function') {
-                    window.attemptJoin = function(id, skipPrompt, knownPass) {
-                        try { closeMobileMenu(); } catch (e) {}
+                    window.attemptJoin = function (id, skipPrompt, knownPass) {
+                        try { closeMobileMenu(); } catch (e) { }
                         return originalAttemptJoin(id, skipPrompt, knownPass);
                     };
-                } else {
-                    // fallback: monkey-patch renderChatList onclicks to close menu after join
-                    // This will be applied each time renderChatList runs as it re-creates items.
                 }
 
-                // ensure we close sidebar on resize to larger screens
                 let rt = null;
                 window.addEventListener('resize', () => {
                     clearTimeout(rt); rt = setTimeout(() => {
                         if (window.innerWidth > 900) closeMobileMenu();
                     }, 120);
                 });
+
             } catch (e) { console.warn('mobile menu init failed', e); }
         })();
 
         // Mobile detection: add `is-mobile` class and show mobile menu button when appropriate
-        (function initMobileClass(){
+        (function initMobileClass() {
             try {
                 const apply = () => {
-                        const small = window.innerWidth <= 900;
-                        // Treat "mobile" only by viewport width so desktop touch devices don't trigger mobile layout
-                        const mobile = small;
-                        if (mobile) document.body.classList.add('is-mobile'); else document.body.classList.remove('is-mobile');
+                    const small = window.innerWidth <= 900;
+                    // Treat "mobile" only by viewport width so desktop touch devices don't trigger mobile layout
+                    const mobile = small;
+                    if (mobile) document.body.classList.add('is-mobile'); else document.body.classList.remove('is-mobile');
                 };
                 apply();
                 let to = null;
                 window.addEventListener('resize', () => { clearTimeout(to); to = setTimeout(apply, 120); });
             } catch (e) { console.warn('initMobileClass failed', e); }
         })();
+
+        let voiceChatsCache = {};
+        let currentVoiceChatId = null;
+        let voicePresenceRef = null;
+        let localAnonUid = null;
+        let localAnonNick = null;
+        let localMutes = {};
+
+        const audioConnect = new Audio('./audio/con.mp3');
+        const audioDisconnect = new Audio('./audio/discon.mp3');
+        const audioMute = new Audio('./audio/mute.mp3');
+        const audioUnmute = new Audio('./audio/unmute.mp3');
+
+        function getVoiceUid() {
+            if (currentUser && currentUser.uid) return currentUser.uid;
+            if (!localAnonUid) localAnonUid = 'anon_' + Math.random().toString(36).substr(2, 9);
+            return localAnonUid;
+        }
+
+        function getVoiceNick() {
+            if (currentUser && currentUser.nick) return currentUser.nick;
+            const nickInputVal = document.getElementById('nicknameInput')?.value.trim();
+            if (nickInputVal) return nickInputVal;
+
+            if (!localAnonNick) {
+                localAnonNick = 'Anon' + Math.floor(1000 + Math.random() * 9000);
+            }
+            return localAnonNick;
+        }
+
+        const voiceChatsRef = db.ref('voice_chats');
+        const voiceChatListEl = document.getElementById('voiceChatList');
+
+        voiceChatsRef.on('value', snap => {
+            let data = snap.val();
+            if (!data) {
+                data = {
+                    'vc_1': { name: 'Voice #1', password: '' },
+                    'vc_2': { name: 'Voice #2', password: '' },
+                    'vc_3': { name: 'Voice #3', password: '' }
+                };
+                voiceChatsRef.set(data);
+            }
+            voiceChatsCache = data;
+
+            // check if kicked
+            if (currentVoiceChatId && voicePresenceRef) {
+                const myUid = getVoiceUid();
+                if (data[currentVoiceChatId] && data[currentVoiceChatId].users && !data[currentVoiceChatId].users[myUid]) {
+                    leaveVoiceChat(true);
+                }
+            }
+            renderVoiceChats();
+        });
+
+        function renderVoiceChats() {
+            if (!voiceChatListEl) return;
+            voiceChatListEl.innerHTML = '';
+
+            Object.entries(voiceChatsCache).forEach(([id, vc]) => {
+                const container = document.createElement('div');
+                container.className = 'voice-chat-container';
+
+                const item = document.createElement('div');
+                item.className = 'voice-chat-item' + (currentVoiceChatId === id ? ' active' : '');
+
+                const titleWrap = document.createElement('div');
+                titleWrap.textContent = vc.name;
+                item.appendChild(titleWrap);
+
+                if (currentVoiceChatId === id) {
+                    const leaveBtn = document.createElement('button');
+                    leaveBtn.className = 'v-btn-leave';
+                    leaveBtn.innerHTML = '📞 ❌';
+                    leaveBtn.title = 'Leave Voice Chat';
+                    leaveBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        leaveVoiceChat();
+                    };
+                    item.appendChild(leaveBtn);
+                }
+
+                item.onclick = () => {
+                    if (currentVoiceChatId !== id) attemptJoinVoice(id);
+                };
+
+                container.appendChild(item);
+                if (vc.users) {
+                    const usersList = document.createElement('div');
+                    usersList.className = 'voice-users';
+
+                    Object.entries(vc.users).forEach(([uid, uData]) => {
+                        const uRow = document.createElement('div');
+                        uRow.className = 'voice-user-row';
+
+                        const uLeft = document.createElement('div');
+                        uLeft.className = 'voice-user-left';
+                        uLeft.innerHTML = `<span style="color:var(--muted); font-weight:bold;">|_</span> <span id="voice-nick-${uid}" style="border: 1px solid transparent; padding: 1px 6px; border-radius: 4px; transition: all 0.15s ease-in-out;">${escapeHtml(uData.nick)}</span>`;
+
+                        const uRight = document.createElement('div');
+                        uRight.className = 'voice-controls';
+
+                        const myUid = getVoiceUid();
+                        const isMe = (uid === myUid);
+
+                        const isAdmin = currentUser && usersCacheById[currentUser.uid] && usersCacheById[currentUser.uid].admin === 1;
+
+                        function createToggleBtn(type, icon) {
+                            const btn = document.createElement('span');
+                            btn.className = 'v-icon';
+                            btn.title = type;
+                            btn.innerHTML = icon;
+
+                            const stateKey = uid + '_' + type;
+                            if (localMutes[stateKey]) {
+                                btn.style.color = '#ef4444';
+                                btn.style.background = 'rgba(239, 68, 68, 0.15)';
+                            }
+
+                            btn.onclick = (e) => {
+                                e.stopPropagation();
+
+                                if (!isMe && !isAdmin) {
+                                    showAlert("Only admins can mute other users.");
+                                    return;
+                                }
+
+                                localMutes[stateKey] = !localMutes[stateKey];
+                                const isMuted = localMutes[stateKey];
+
+                                if (isMuted) audioMute.play().catch(() => { });
+                                else audioUnmute.play().catch(() => { });
+
+                                // real mute logic
+                                if (isMe && type === 'Mic' && callObject) {
+                                    callObject.setLocalAudio(!isMuted);
+                                }
+                                if (isMe && type === 'Headphones') {
+                                    document.querySelectorAll('#daily-audio-container audio').forEach(a => a.muted = isMuted);
+                                }
+                                if (!isMe && type === 'Mic') {
+                                    const audioEl = document.getElementById('audio-' + uid);
+                                    if (audioEl) audioEl.muted = isMuted;
+                                }
+
+                                renderVoiceChats();
+                            };
+                            return btn;
+                        }
+
+                        uRight.appendChild(createToggleBtn('Mic', '🎙️'));
+                        uRight.appendChild(createToggleBtn('Headphones', '🎧'));
+
+                        if (isMe) {
+                            uRight.appendChild(createToggleBtn('Stream', '🖥️'));
+                        }
+
+                        //KICK
+                        const kickBtn = document.createElement('span');
+                        kickBtn.className = 'v-icon';
+                        kickBtn.title = 'Kick User';
+                        kickBtn.innerHTML = '❌';
+                        kickBtn.style.color = '#ef4444';
+                        kickBtn.onclick = (e) => {
+                            e.stopPropagation();
+
+                            if (!isMe && !isAdmin) {
+                                showAlert("Only admins can kick other users.");
+                                return;
+                            }
+
+                            kickVoiceUser(id, uid);
+                        };
+
+                        uRight.appendChild(kickBtn);
+                        uRow.appendChild(uLeft);
+                        uRow.appendChild(uRight);
+                        usersList.appendChild(uRow);
+                    });
+                    container.appendChild(usersList);
+                }
+
+                voiceChatListEl.appendChild(container);
+            });
+        }
+
+        function attemptJoinVoice(id) {
+            const vc = voiceChatsCache[id];
+            if (!vc) return;
+
+            if (!vc.password || vc.password.trim() === '') {
+                joinVoiceChat(id);
+                return;
+            }
+
+            showModal(`
+                            <h4>Join ${escapeHtml(vc.name)}</h4>
+                            <div class="row">
+                            <label>Password</label>
+                            <input id="joinVoicePass" type="password" placeholder="Password"/>
+                            </div>
+                            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+                            <button id="cancelJoinVoice" class="btn btn-ghost">Cancel</button>
+                            <button id="confirmJoinVoice" class="btn btn-primary">Join</button>
+                            </div>`);
+
+            document.getElementById('cancelJoinVoice').onclick = closeModal;
+            document.getElementById('confirmJoinVoice').onclick = () => {
+                const p = document.getElementById('joinVoicePass').value;
+                if (p === (vc.password || '') || p === adminPassword) {
+                    closeModal();
+                    joinVoiceChat(id);
+                } else {
+                    showAlert('Wrong password');
+                }
+            };
+        }
+
+        function joinVoiceChat(id) {
+            if (currentVoiceChatId) leaveVoiceChat();
+
+            audioConnect.play().catch(err => console.log('Audio error:', err));
+
+            currentVoiceChatId = id;
+            const myUid = getVoiceUid();
+
+            voicePresenceRef = db.ref(`voice_chats/${id}/users/${myUid}`);
+
+            const userData = {
+                nick: getVoiceNick(),
+                joinedAt: Date.now()
+            };
+
+            voicePresenceRef.onDisconnect().remove().then(() => {
+                voicePresenceRef.set(userData);
+            });
+
+            startDailyCall(id, myUid);
+        }
+
+        //leave vc
+        function leaveVoiceChat(wasKicked = false) {
+            if (localSpeakingInterval) clearInterval(localSpeakingInterval);
+            if (localAudioContext) {
+                localAudioContext.close().catch(() => { });
+                localAudioContext = null;
+            }
+
+            if (voicePresenceRef) {
+                audioDisconnect.play().catch(err => console.log('Audio error:', err));
+                if (!wasKicked) voicePresenceRef.remove();
+                voicePresenceRef.onDisconnect().cancel();
+                voicePresenceRef = null;
+            }
+            currentVoiceChatId = null;
+            renderVoiceChats();
+            if (callObject) {
+                callObject.leave();
+            }
+            if (wasKicked) {
+                showAlert("You were kicked from the voice chat.");
+            }
+        }
+
+        //kick
+        function kickVoiceUser(chatId, uid) {
+            if (confirm("Do you want to kick this user from the voice chat?")) {
+                db.ref(`voice_chats/${chatId}/users/${uid}`).remove();
+
+                if (uid === getVoiceUid() && currentVoiceChatId === chatId) {
+                    leaveVoiceChat();
+                }
+            }
+        }
+
+        //AUDIO (DAILY.CO)
+        let callObject = null;
+        let localAudioContext = null;
+        let localAnalyser = null;
+        let localMicrophone = null;
+        let localSpeakingInterval = null;
+
+        const DAILY_ROOMS = {
+            'vc_1': 'https://konsmon.daily.co/konsmon-vc1',
+            'vc_2': 'https://konsmon.daily.co/konsmon-vc2',
+            'vc_3': 'https://konsmon.daily.co/konsmon-vc3'
+        };
+
+        if (!document.getElementById('daily-audio-container')) {
+            const audioContainer = document.createElement('div');
+            audioContainer.id = 'daily-audio-container';
+            document.body.appendChild(audioContainer);
+        }
+
+        async function startDailyCall(roomId, myUid) {
+            const roomUrl = DAILY_ROOMS[roomId];
+            if (!roomUrl) return;
+
+            if (!callObject) {
+                callObject = window.DailyIframe.createCallObject({
+                    audioSource: true,
+                    videoSource: false
+                });
+
+                callObject.on('track-started', playAudioTrack);
+                callObject.on('track-stopped', stopAudioTrack);
+                callObject.on('active-speaker-change', handleSpeakerChange);
+            }
+
+            try {
+                await callObject.join({ url: roomUrl, userName: myUid });
+
+                // --- BŁYSKAWICZNY NASŁUCH WŁASNEGO MIKROFONU ---
+                navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+                    localAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    localAnalyser = localAudioContext.createAnalyser();
+                    localMicrophone = localAudioContext.createMediaStreamSource(stream);
+                    localMicrophone.connect(localAnalyser);
+                    localAnalyser.fftSize = 256;
+                    const dataArray = new Uint8Array(localAnalyser.frequencyBinCount);
+
+                    localSpeakingInterval = setInterval(() => {
+                        localAnalyser.getByteFrequencyData(dataArray);
+                        let sum = 0;
+                        for (let i = 0; i < dataArray.length; i++) {
+                            sum += dataArray[i];
+                        }
+                        const averageVolume = sum / dataArray.length;
+
+                        const myNickSpan = document.getElementById('voice-nick-' + myUid);
+                        const isMuted = localMutes[myUid + '_Mic'];
+
+                        if (myNickSpan) {
+                            if (averageVolume > 15 && !isMuted) {
+                                myNickSpan.classList.add('speaking-border');
+                            } else {
+                                myNickSpan.classList.remove('speaking-border');
+                            }
+                        }
+                    }, 100);
+                }).catch(err => console.error("Mic access denied for local meter", err));
+
+            } catch (e) {
+                console.error("Daily error:", e);
+            }
+        }
+
+        function playAudioTrack(e) {
+            if (e.participant.local || e.track.kind !== 'audio') return;
+
+            let audioEl = document.createElement('audio');
+            audioEl.id = 'audio-' + e.participant.user_name;
+            audioEl.autoplay = true;
+
+            const myUid = getVoiceUid();
+            if (localMutes[myUid + '_Headphones'] || localMutes[e.participant.user_name + '_Mic']) {
+                audioEl.muted = true;
+            }
+
+            audioEl.srcObject = new MediaStream([e.track]);
+            document.getElementById('daily-audio-container').appendChild(audioEl);
+        }
+
+        function stopAudioTrack(e) {
+            if (e.track.kind !== 'audio') return;
+            const audioEl = document.getElementById('audio-' + e.participant.user_name);
+            if (audioEl) audioEl.remove();
+        }
+
+        function handleSpeakerChange(e) {
+            const myUid = getVoiceUid();
+            document.querySelectorAll('.speaking-border').forEach(el => {
+                if (el.id !== 'voice-nick-' + myUid) el.classList.remove('speaking-border');
+            });
+
+            const peerId = e.activeSpeaker?.peerId;
+            if (!peerId) return;
+
+            const participants = callObject.participants();
+            const p = participants[peerId];
+
+            if (p && p.user_name && p.user_name !== myUid) {
+                const nickSpan = document.getElementById('voice-nick-' + p.user_name);
+                if (nickSpan) nickSpan.classList.add('speaking-border');
+            }
+        }
