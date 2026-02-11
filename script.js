@@ -1313,11 +1313,11 @@
                             return btn;
                         }
 
-                        uRight.appendChild(createToggleBtn('Mic', '🎙️'));
-                        uRight.appendChild(createToggleBtn('Headphones', '🎧'));
+                        uRight.appendChild(createToggleBtn('mic mute', '🎙️'));
+                        uRight.appendChild(createToggleBtn('sound mute', '🎧'));
 
                         if (isMe) {
-                            uRight.appendChild(createToggleBtn('Stream', '🖥️'));
+                            uRight.appendChild(createToggleBtn('stream', '🖥️'));
                         }
 
                         //KICK
