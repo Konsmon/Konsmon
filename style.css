@@ -667,3 +667,111 @@ textarea::-webkit-scrollbar-thumb:hover,
 
 /* mobile menu button hidden by default (desktop) */
 /* mobile menu button visibility is handled by media queries */
+
+/* --- VOICE CHATS STYLES --- */
+.voice-chat-container {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.voice-chat-item {
+    background: linear-gradient(180deg,#0d1112,#111315);
+    border: 1px solid var(--muted);
+    padding: 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 600;
+    transition: outline 0.2s ease, background 0.2s ease;
+}
+
+    /* Biała obramówka przy najechaniu */
+    .voice-chat-item:hover {
+        outline: 2px solid rgba(14,165,255,0.08);
+    }
+
+    .voice-chat-item.active {
+        border-color: var(--accent);
+        background: #022b3a; /* Lekko niebieskawe tło dla aktywnego */
+    }
+
+.voice-users {
+    padding-left: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 13px;
+}
+
+.voice-user-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--text);
+    padding: 2px 0;
+}
+
+.voice-user-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.voice-controls {
+    display: flex;
+    gap: 4px;
+}
+
+/* Ikonki i ich podświetlenie */
+.v-icon {
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.2s, outline 0.2s, transform 0.1s;
+    border-radius: 4px;
+    padding: 2px 4px;
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.05);
+}
+
+    .v-icon:hover {
+        opacity: 1;
+        outline: 1px solid rgba(255, 255, 255, 0.8);
+        transform: scale(1.1);
+        background: rgba(255,255,255,0.1);
+    }
+
+.v-btn-leave {
+    background: #b91c1c;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: outline 0.2s, transform 0.1s;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+    .v-btn-leave:hover {
+        outline: 2px solid rgba(255, 255, 255, 0.8);
+        transform: translateY(-2px);
+    }
+
+/*DAILY.CO */
+.speaking-border {
+    border-color: #22c55e !important;
+    box-shadow: 0 0 8px rgba(34, 197, 94, 0.4);
+    color: #4ade80;
+}
+
+#daily-audio-container {
+    display: none;
+}
