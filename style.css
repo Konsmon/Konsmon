@@ -775,7 +775,13 @@ textarea::-webkit-scrollbar-thumb:hover,
 
 
 #webrtc-audio-container {
-    display: none;
+    display: block; /* Element musi być renderowany! */
     position: absolute;
     top: -9999px;
+    left: -9999px;
+    opacity: 0;
+    pointer-events: none;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
 }
