@@ -1172,6 +1172,7 @@
         let currentVoiceChatId = null;
         let voicePresenceRef = null;
         let voiceSignalingRef = null;
+        let isIntentionalLeave = false;
 
         // Dane lokalne
         let localAnonUid = null;
@@ -1239,18 +1240,18 @@
             voiceChatsCache = data;
 
             // Check kick
+            // Check kick
             if (currentVoiceChatId && voicePresenceRef) {
+                // JEŚLI WYCHODZIMY CELOWO, NIE SPRAWDZAJ KICKA
+                if (isIntentionalLeave) {
+                    return;
+                }
+
                 const myUid = getVoiceUid();
-                // Dodajemy sprawdzenie czy snap w ogóle zawiera dane tego czatu, żeby uniknąć błędów przy ładowaniu
                 if (data && data[currentVoiceChatId] && data[currentVoiceChatId].users) {
                     if (!data[currentVoiceChatId].users[myUid]) {
-                        // Małe opóźnienie dla pewności, że to nie jest glitch przy łączeniu
-                        setTimeout(() => {
-                            // Sprawdzamy ponownie w cache lokalnym lub via ref, ale dla uproszczenia zostawmy tak:
-                            // Jeśli nadal nas nie ma, to znaczy że serio nas wyrzucono
-                            leaveVoiceChat(true);
-                        }, 200);
-                        return; // Ważne, żeby nie renderować dalej jeśli wychodzimy
+                        // ... logika kicka ...
+                        leaveVoiceChat(true);
                     }
                 }
             }
@@ -1418,12 +1419,14 @@
 
         // --- GŁÓWNA LOGIKA WEBRTC ---
         async function joinVoiceChat(id) {
+            isIntentionalLeave = false;
             if (currentVoiceChatId) leaveVoiceChat();
 
             // Upewnij się, że AudioContext jest aktywny (fix na ciszę)
             if (!audioContext) {
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
+            // Zawsze próbuj wznowić kontekst przy dołączaniu
             if (audioContext.state === 'suspended') {
                 await audioContext.resume();
             }
@@ -1472,6 +1475,9 @@
         }
 
         function leaveVoiceChat(wasKicked = false) {
+            if (!wasKicked) {
+                isIntentionalLeave = true;
+            }
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
                 localStream = null;
@@ -1522,47 +1528,59 @@
                 }
             };
 
-            // Wewnątrz createPeerConnection w script.js
-
             pc.ontrack = (event) => {
-                console.log("Stream received from:", targetUid);
-                const stream = event.streams[0];
+                // 1. Tworzymy nowy, czysty MediaStream tylko z tej ścieżki audio
+                // (To naprawia błędy, gdzie event.streams[0] bywa pusty lub zablokowany)
+                const remoteStream = new MediaStream([event.track]);
 
-                // Element Audio
+                // 2. Szukamy lub tworzymy element audio
                 let audioEl = document.getElementById('audio-' + targetUid);
                 if (!audioEl) {
                     audioEl = document.createElement('audio');
                     audioEl.id = 'audio-' + targetUid;
                     audioEl.autoplay = true;
-                    audioEl.playsInline = true;
-                    audioEl.controls = false; // Ukryty, ale nie display:none
-                    document.getElementById('webrtc-audio-container').appendChild(audioEl);
+                    audioEl.playsInline = true; // Ważne dla Safari/Mobile
+                    audioEl.controls = false;
+
+                    // Dodajemy do kontenera
+                    const container = document.getElementById('webrtc-audio-container');
+                    if (container) container.appendChild(audioEl);
                 }
 
-                audioEl.srcObject = stream;
-                audioEl.muted = false; // WYMUSZENIE BRAKU WYCISZENIA
+                // 3. Przypisujemy strumień
+                audioEl.srcObject = remoteStream;
+                audioEl.volume = 1.0;
 
-                // Sprawdź czy user nie wyciszył lokalnie "słuchawek"
+                // 4. Obsługa wyciszenia lokalnego (jeśli ktoś ma wyciszone słuchawki)
                 const myUid = getVoiceUid();
                 if (localMutes[myUid + '_Headphones']) {
                     audioEl.muted = true;
+                } else {
+                    audioEl.muted = false;
                 }
 
-                // Próba odtworzenia z logowaniem błędu
+                // 5. Brutalne wymuszenie odtwarzania (Promise handling)
                 const playPromise = audioEl.play();
                 if (playPromise !== undefined) {
-                    playPromise.catch(error => {
-                        console.warn("Autoplay blocked for " + targetUid, error);
-                        // Czasami trzeba "kliknąć" w stronę, żeby audio ruszyło.
-                        // Skoro user kliknął "Join", powinno być ok, ale warto wiedzieć.
+                    playPromise.then(() => {
+                        console.log("Audio playing for", targetUid);
+                    }).catch(error => {
+                        console.warn("Autoplay blocked for " + targetUid + ". Attempting explicit resume.", error);
+                        // Jeśli przeglądarka zablokowała autoplay, spróbujmy odciszyć
+                        audioEl.muted = false;
+                        audioEl.play();
                     });
                 }
 
-                // Klonujemy strumień TYLKO dla analizatora
-                // (Reszta kodu bez zmian...)
-                const clone = stream.clone();
-                visualizerStreams[targetUid] = clone;
-                attachSpeakingVisualizer(clone, targetUid);
+                // 6. Visualizer - używamy klonu, aby nie zakłócać głównego audio
+                // (To już miałeś, ale upewnijmy się, że klonujemy remoteStream)
+                try {
+                    const clone = remoteStream.clone();
+                    visualizerStreams[targetUid] = clone;
+                    attachSpeakingVisualizer(clone, targetUid);
+                } catch (e) {
+                    console.warn("Visualizer error", e);
+                }
             };
 
             pc.onconnectionstatechange = () => {
