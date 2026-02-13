@@ -1513,35 +1513,44 @@
                 }
             };
 
+            // Wewnątrz createPeerConnection w script.js
+
             pc.ontrack = (event) => {
                 console.log("Stream received from:", targetUid);
                 const stream = event.streams[0];
 
-                // Element Audio - Oryginał (do głośników)
+                // Element Audio
                 let audioEl = document.getElementById('audio-' + targetUid);
                 if (!audioEl) {
                     audioEl = document.createElement('audio');
                     audioEl.id = 'audio-' + targetUid;
                     audioEl.autoplay = true;
                     audioEl.playsInline = true;
+                    audioEl.controls = false; // Ukryty, ale nie display:none
                     document.getElementById('webrtc-audio-container').appendChild(audioEl);
                 }
 
                 audioEl.srcObject = stream;
+                audioEl.muted = false; // WYMUSZENIE BRAKU WYCISZENIA
 
-                // Próba odtworzenia
+                // Sprawdź czy user nie wyciszył lokalnie "słuchawek"
+                const myUid = getVoiceUid();
+                if (localMutes[myUid + '_Headphones']) {
+                    audioEl.muted = true;
+                }
+
+                // Próba odtworzenia z logowaniem błędu
                 const playPromise = audioEl.play();
                 if (playPromise !== undefined) {
                     playPromise.catch(error => {
                         console.warn("Autoplay blocked for " + targetUid, error);
-                        // Można tu dodać UI "Kliknij, aby odsłuchać"
+                        // Czasami trzeba "kliknąć" w stronę, żeby audio ruszyło.
+                        // Skoro user kliknął "Join", powinno być ok, ale warto wiedzieć.
                     });
                 }
 
-                const myUid = getVoiceUid();
-                if (localMutes[myUid + '_Headphones']) audioEl.muted = true;
-
-                // Klonujemy strumień TYLKO dla analizatora (żeby nie wyciszał oryginału)
+                // Klonujemy strumień TYLKO dla analizatora
+                // (Reszta kodu bez zmian...)
                 const clone = stream.clone();
                 visualizerStreams[targetUid] = clone;
                 attachSpeakingVisualizer(clone, targetUid);
@@ -1585,7 +1594,13 @@
                     await pc.setRemoteDescription(new RTCSessionDescription(sdp));
 
                     if (pc.iceQueue.length > 0) {
-                        for (const c of pc.iceQueue) await pc.addIceCandidate(c);
+                        for (const c of pc.iceQueue) {
+                            try {
+                                await pc.addIceCandidate(c);
+                            } catch (err) {
+                                console.warn("Error adding queued ice candidate", err);
+                            }
+                        }
                         pc.iceQueue = [];
                     }
 
