@@ -1171,7 +1171,7 @@
         let voiceChatsCache = {};
         let currentVoiceChatId = null;
         let voicePresenceRef = null;
-        let voiceSignalingRef = null; // Ref do wymiany danych połączeniowych
+        let voiceSignalingRef = null;
 
         // Dane lokalne
         let localAnonUid = null;
@@ -1181,10 +1181,10 @@
         // WebRTC zmienne
         let localStream = null;
         let peers = {}; // { uid: RTCPeerConnection }
-        let audioContext = null; // Do analizy dźwięku (zielona ramka)
-        let visualizerIntervals = {}; // Interwały sprawdzające głośność
+        let audioContext = null;
+        let visualizerIntervals = {};
 
-        // Konfiguracja serwerów STUN (Google - darmowe)
+        // Konfiguracja serwerów STUN
         const rtcConfig = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -1204,7 +1204,7 @@
             document.body.appendChild(ac);
         }
 
-        // --- POMOCNICZE FUNKCJE UŻYTKOWNIKA ---
+        // --- POMOCNICZE FUNKCJE ---
 
         function getVoiceUid() {
             if (currentUser && currentUser.uid) return currentUser.uid;
@@ -1220,14 +1220,13 @@
             return localAnonNick;
         }
 
-        // --- GŁÓWNA PĘTLA UI (LISTA CZATÓW) ---
+        // --- UI & LISTA CZATÓW ---
 
         const voiceChatsRef = db.ref('voice_chats');
         const voiceChatListEl = document.getElementById('voiceChatList');
 
         voiceChatsRef.on('value', snap => {
             let data = snap.val();
-            // Tworzenie domyślnych czatów jeśli baza pusta
             if (!data) {
                 data = {
                     'vc_1': { name: 'Voice #1', password: '' },
@@ -1238,7 +1237,7 @@
             }
             voiceChatsCache = data;
 
-            // Sprawdzenie czy nas nie wyrzucono (Kick)
+            // Check kick
             if (currentVoiceChatId && voicePresenceRef) {
                 const myUid = getVoiceUid();
                 if (data[currentVoiceChatId] && data[currentVoiceChatId].users && !data[currentVoiceChatId].users[myUid]) {
@@ -1288,7 +1287,6 @@
                         const uRow = document.createElement('div');
                         uRow.className = 'voice-user-row';
 
-                        // Nick + ID do podświetlania (zielona ramka)
                         const uLeft = document.createElement('div');
                         uLeft.className = 'voice-user-left';
                         uLeft.innerHTML = `<span style="color:var(--muted); font-weight:bold;">|_</span> <span id="voice-nick-${uid}" style="border: 1px solid transparent; padding: 1px 6px; border-radius: 4px; transition: all 0.1s ease;">${escapeHtml(uData.nick)}</span>`;
@@ -1300,7 +1298,6 @@
                         const isMe = (uid === myUid);
                         const isAdmin = currentUser && usersCacheById[currentUser.uid] && usersCacheById[currentUser.uid].admin === 1;
 
-                        // Funkcja generująca przyciski
                         function createToggleBtn(type, icon) {
                             const btn = document.createElement('span');
                             btn.className = 'v-icon';
@@ -1316,14 +1313,9 @@
                             btn.onclick = (e) => {
                                 e.stopPropagation();
 
-                                // Tylko admin może klikać cudze (chyba że wyciszanie lokalne słuchawek)
                                 if (!isMe && !isAdmin && type === 'Mic') {
                                     showAlert("Only admins can mute other users.");
                                     return;
-                                }
-                                // Każdy może wyciszyć kogoś "dla siebie" (Headphones)
-                                if (!isMe && type === 'Headphones') {
-                                    // logic below
                                 }
 
                                 localMutes[stateKey] = !localMutes[stateKey];
@@ -1332,27 +1324,19 @@
                                 if (isMuted) audioMute.play().catch(() => { });
                                 else audioUnmute.play().catch(() => { });
 
-                                // --- LOGIKA MUTE (WebRTC) ---
+                                // MUTE LOGIC
                                 if (type === 'Mic') {
                                     if (isMe && localStream) {
-                                        // Fizyczne wyłączenie wysyłania dźwięku
                                         localStream.getAudioTracks().forEach(t => t.enabled = !isMuted);
                                     }
-                                    // Jeśli to admin mutuje kogoś innego -> to wymagałoby przesłania sygnału przez bazę.
-                                    // W wersji uproszczonej P2P admin mutuje tylko to co ON słyszy.
-                                    // Żeby admin mógł "globalnie" zmutować, trzeba by wysłać flagę do bazy.
-                                    // Na razie zrobimy mutowanie lokalne (nie słyszysz go).
                                     const remoteAudio = document.getElementById('audio-' + uid);
                                     if (remoteAudio) remoteAudio.muted = isMuted;
                                 }
 
                                 if (type === 'Headphones') {
-                                    // Wycisz wszystko (Global deafen) lub konkretnego usera
                                     if (isMe) {
-                                        // Wyciszamy wszystkie elementy <audio>
                                         document.querySelectorAll('#webrtc-audio-container audio').forEach(a => a.muted = isMuted);
                                     } else {
-                                        // Wyciszamy konkretnego usera u siebie
                                         const remoteAudio = document.getElementById('audio-' + uid);
                                         if (remoteAudio) remoteAudio.muted = isMuted;
                                     }
@@ -1370,7 +1354,6 @@
                             uRight.appendChild(createToggleBtn('Stream', '🖥️'));
                         }
 
-                        // KICK
                         const kickBtn = document.createElement('span');
                         kickBtn.className = 'v-icon';
                         kickBtn.title = 'Kick User';
@@ -1397,7 +1380,6 @@
             });
         }
 
-        // --- DOŁĄCZANIE (PROMPT HASŁA) ---
         function attemptJoinVoice(id) {
             const vc = voiceChatsCache[id];
             if (!vc) return;
@@ -1424,16 +1406,15 @@
             };
         }
 
-        // --- GŁÓWNA LOGIKA WEBRTC (DOŁĄCZANIE) ---
+        // --- GŁÓWNA LOGIKA WEBRTC ---
         async function joinVoiceChat(id) {
-            if (currentVoiceChatId) leaveVoiceChat(); // Najpierw wyjdź ze starego
+            if (currentVoiceChatId) leaveVoiceChat();
 
-            // 1. Pobierz dostęp do mikrofonu
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
             } catch (err) {
                 console.error("Mic error:", err);
-                showAlert("Microphone access denied or error: " + err.message);
+                showAlert("Microphone access denied: " + err.message);
                 return;
             }
 
@@ -1441,29 +1422,24 @@
             currentVoiceChatId = id;
             const myUid = getVoiceUid();
 
-            // 2. Dodaj się do listy obecności w Firebase
             voicePresenceRef = db.ref(`voice_chats/${id}/users/${myUid}`);
             const userData = { nick: getVoiceNick(), joinedAt: Date.now() };
             voicePresenceRef.onDisconnect().remove().then(() => {
                 voicePresenceRef.set(userData);
             });
 
-            // 3. Uruchom nasłuch na sygnały (Signaling)
+            // Signaling listener
             voiceSignalingRef = db.ref(`voice_chats/${id}/signaling/${myUid}`);
             voiceSignalingRef.on('child_added', async (snap) => {
                 const msg = snap.val();
                 if (!msg) return;
-
-                // Usuwamy sygnał po odczytaniu, żeby nie śmiecić
-                snap.ref.remove();
-
+                snap.ref.remove(); // Consume message
                 await handleSignalingMessage(msg);
             });
 
-            // 4. Uruchom własny analizator dźwięku (dla zielonej ramki)
             attachSpeakingVisualizer(localStream, myUid);
 
-            // 5. Zadzwoń do wszystkich, którzy JUŻ są na kanale
+            // Call existing users
             const chatData = voiceChatsCache[id];
             if (chatData && chatData.users) {
                 Object.keys(chatData.users).forEach(targetUid => {
@@ -1474,26 +1450,20 @@
             }
         }
 
-        // --- WYCHODZENIE ---
         function leaveVoiceChat(wasKicked = false) {
-            // Zatrzymaj streamy i połączenia
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
                 localStream = null;
             }
-
-            // Zamknij połączenia P2P
             Object.values(peers).forEach(pc => pc.close());
             peers = {};
 
-            // Wyczyść wizualizatory i audio
             Object.values(visualizerIntervals).forEach(iv => clearInterval(iv));
             visualizerIntervals = {};
             if (audioContext) { audioContext.close(); audioContext = null; }
             const container = document.getElementById('webrtc-audio-container');
             if (container) container.innerHTML = '';
 
-            // Usuń z Firebase
             if (voicePresenceRef) {
                 if (!wasKicked) audioDisconnect.play().catch(() => { });
                 voicePresenceRef.remove();
@@ -1512,39 +1482,48 @@
             if (wasKicked) showAlert("You were kicked from the voice chat.");
         }
 
-        // --- TWORZENIE POŁĄCZENIA (WEBRTC) ---
+        // --- WEBRTC CONNECTION HANDLING (NAPRAWIONE) ---
 
-        // Funkcja pomocnicza: Tworzy obiekt PeerConnection
         function createPeerConnection(targetUid) {
+            console.log("Creating PC for:", targetUid);
             const pc = new RTCPeerConnection(rtcConfig);
+            pc.iceQueue = []; // Bufor na kandydatów ICE
 
-            // Gdy pojawią się kandydaci ICE (ścieżki sieciowe), wyślij je do partnera
             pc.onicecandidate = (event) => {
                 if (event.candidate) {
                     sendSignal(targetUid, { type: 'candidate', candidate: event.candidate });
                 }
             };
 
-            // Gdy otrzymamy zdalny strumień dźwięku
             pc.ontrack = (event) => {
+                console.log("Stream received from:", targetUid);
                 const stream = event.streams[0];
-                if (!document.getElementById('audio-' + targetUid)) {
-                    const audioEl = document.createElement('audio');
+
+                // Sprawdź czy element audio już istnieje
+                let audioEl = document.getElementById('audio-' + targetUid);
+                if (!audioEl) {
+                    audioEl = document.createElement('audio');
                     audioEl.id = 'audio-' + targetUid;
-                    audioEl.srcObject = stream;
                     audioEl.autoplay = true;
-                    // Sprawdź czy mamy włączony global mute
-                    const myUid = getVoiceUid();
-                    if (localMutes[myUid + '_Headphones']) audioEl.muted = true;
-
+                    // Ważne: dodajemy do DOM przed ustawieniem srcObject
                     document.getElementById('webrtc-audio-container').appendChild(audioEl);
-
-                    // Podepnij wizualizator (zielona ramka dla kolegi)
-                    attachSpeakingVisualizer(stream, targetUid);
                 }
+
+                audioEl.srcObject = stream;
+
+                // Spróbuj odpalić dźwięk
+                audioEl.play().catch(e => console.warn("Audio play blocked:", e));
+
+                const myUid = getVoiceUid();
+                if (localMutes[myUid + '_Headphones']) audioEl.muted = true;
+
+                attachSpeakingVisualizer(stream, targetUid);
             };
 
-            // Dodaj nasz mikrofon do połączenia
+            pc.onconnectionstatechange = () => {
+                console.log(`Connection with ${targetUid}: ${pc.connectionState}`);
+            };
+
             if (localStream) {
                 localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
             }
@@ -1553,7 +1532,6 @@
             return pc;
         }
 
-        // Dzwonimy do kogoś (Jesteśmy inicjatorem)
         async function initiateCall(targetUid) {
             const pc = createPeerConnection(targetUid);
             const offer = await pc.createOffer();
@@ -1561,92 +1539,103 @@
             sendSignal(targetUid, { type: 'offer', sdp: offer });
         }
 
-        // Odbieramy sygnały
         async function handleSignalingMessage(msg) {
             const { type, sdp, candidate, from } = msg;
 
-            // Jeśli nie mamy jeszcze PC dla tego użytkownika, a dostajemy ofertę -> stwórzmy PC
-            if (!peers[from] && type === 'offer') {
-                createPeerConnection(from);
+            // Jeśli nie ma PC, stwórz je (dla offer)
+            if (!peers[from]) {
+                if (type === 'offer') {
+                    createPeerConnection(from);
+                } else {
+                    // Ignoruj osierocone odpowiedzi/kandydatów
+                    return;
+                }
             }
 
             const pc = peers[from];
-            if (!pc) return; // Jeśli dostaliśmy candidate dla nieistniejącego PC, ignoruj
 
             try {
                 if (type === 'offer') {
+                    console.log("Received Offer from", from);
                     await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+
+                    // Przetwórz kolejkę ICE
+                    if (pc.iceQueue.length > 0) {
+                        for (const c of pc.iceQueue) await pc.addIceCandidate(c);
+                        pc.iceQueue = [];
+                    }
+
                     const answer = await pc.createAnswer();
                     await pc.setLocalDescription(answer);
                     sendSignal(from, { type: 'answer', sdp: answer });
                 }
                 else if (type === 'answer') {
+                    console.log("Received Answer from", from);
                     await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+
+                    // Przetwórz kolejkę ICE
+                    if (pc.iceQueue.length > 0) {
+                        for (const c of pc.iceQueue) await pc.addIceCandidate(c);
+                        pc.iceQueue = [];
+                    }
                 }
                 else if (type === 'candidate') {
-                    await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                    // FIX: Jeśli remoteDescription nie jest gotowe, kolejkuj kandydata!
+                    const cand = new RTCIceCandidate(candidate);
+                    if (pc.remoteDescription && pc.remoteDescription.type) {
+                        await pc.addIceCandidate(cand);
+                    } else {
+                        console.log("Queueing ICE candidate for", from);
+                        pc.iceQueue.push(cand);
+                    }
                 }
             } catch (err) {
-                console.warn("WebRTC signaling error:", err);
+                console.warn("Signaling error:", err);
             }
         }
 
-        // Wysyłanie danych przez Firebase
         function sendSignal(targetUid, payload) {
             if (!currentVoiceChatId) return;
             const myUid = getVoiceUid();
-            // Zapisujemy w skrzynce odbiorczej celu
             db.ref(`voice_chats/${currentVoiceChatId}/signaling/${targetUid}`).push({
                 ...payload,
                 from: myUid
             });
         }
 
-        // --- ZIELONA RAMKA (ANALIZATOR AUDIO) ---
+        // --- VISUALIZER ---
         function attachSpeakingVisualizer(stream, uid) {
             if (!audioContext) {
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
-
-            // Czasami WebRTC nie jest jeszcze gotowe, spróbujmy bezpiecznie
             try {
                 const source = audioContext.createMediaStreamSource(stream);
                 const analyser = audioContext.createAnalyser();
                 analyser.fftSize = 256;
                 source.connect(analyser);
-
                 const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
-                // Czyścimy stary interwał jeśli był
                 if (visualizerIntervals[uid]) clearInterval(visualizerIntervals[uid]);
 
                 visualizerIntervals[uid] = setInterval(() => {
-                    // Sprawdź czy jeszcze jesteśmy na czacie
                     if (!currentVoiceChatId) return;
-
                     analyser.getByteFrequencyData(dataArray);
                     let sum = 0;
-                    for (let i = 0; i < dataArray.length; i++) {
-                        sum += dataArray[i];
-                    }
+                    for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
                     const average = sum / dataArray.length;
 
                     const nickEl = document.getElementById('voice-nick-' + uid);
                     if (nickEl) {
-                        // Próg czułości: 10
-                        if (average > 10) {
-                            nickEl.classList.add('speaking-border');
-                        } else {
-                            nickEl.classList.remove('speaking-border');
-                        }
+                        if (average > 10) nickEl.classList.add('speaking-border');
+                        else nickEl.classList.remove('speaking-border');
                     }
                 }, 100);
             } catch (e) {
-                console.warn("Visualizer attach failed for", uid, e);
+                console.warn("Visualizer error", e);
             }
         }
 
-        //kick
+        // Kick
         function kickVoiceUser(chatId, uid) {
             if (confirm("Do you want to kick this user from the voice chat?")) {
                 db.ref(`voice_chats/${chatId}/users/${uid}`).remove();
