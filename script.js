@@ -1183,6 +1183,7 @@
         let peers = {}; // { uid: RTCPeerConnection }
         let audioContext = null;
         let visualizerIntervals = {};
+        let visualizerStreams = {}; // Przechowuje klony strumieni
 
         // Konfiguracja serwerów STUN
         const rtcConfig = {
@@ -1410,6 +1411,14 @@
         async function joinVoiceChat(id) {
             if (currentVoiceChatId) leaveVoiceChat();
 
+            // Upewnij się, że AudioContext jest aktywny (fix na ciszę)
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioContext.state === 'suspended') {
+                await audioContext.resume();
+            }
+
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
             } catch (err) {
@@ -1437,9 +1446,12 @@
                 await handleSignalingMessage(msg);
             });
 
-            attachSpeakingVisualizer(localStream, myUid);
+            // Lokalna zielona ramka (z klonu!)
+            const myClone = localStream.clone();
+            visualizerStreams['local'] = myClone;
+            attachSpeakingVisualizer(myClone, myUid);
 
-            // Call existing users
+            // Zadzwoń do innych
             const chatData = voiceChatsCache[id];
             if (chatData && chatData.users) {
                 Object.keys(chatData.users).forEach(targetUid => {
@@ -1455,12 +1467,18 @@
                 localStream.getTracks().forEach(track => track.stop());
                 localStream = null;
             }
+            Object.values(visualizerStreams).forEach(s => s.getTracks().forEach(t => t.stop()));
+            visualizerStreams = {};
+
             Object.values(peers).forEach(pc => pc.close());
             peers = {};
 
             Object.values(visualizerIntervals).forEach(iv => clearInterval(iv));
             visualizerIntervals = {};
-            if (audioContext) { audioContext.close(); audioContext = null; }
+
+            // Nie zamykamy audioContext całkowicie, żeby można było wejść ponownie bez błędów
+            // if (audioContext) { audioContext.close(); audioContext = null; } 
+
             const container = document.getElementById('webrtc-audio-container');
             if (container) container.innerHTML = '';
 
@@ -1482,12 +1500,12 @@
             if (wasKicked) showAlert("You were kicked from the voice chat.");
         }
 
-        // --- WEBRTC CONNECTION HANDLING (NAPRAWIONE) ---
+        // --- WEBRTC CONNECTION HANDLING ---
 
         function createPeerConnection(targetUid) {
             console.log("Creating PC for:", targetUid);
             const pc = new RTCPeerConnection(rtcConfig);
-            pc.iceQueue = []; // Bufor na kandydatów ICE
+            pc.iceQueue = [];
 
             pc.onicecandidate = (event) => {
                 if (event.candidate) {
@@ -1499,25 +1517,34 @@
                 console.log("Stream received from:", targetUid);
                 const stream = event.streams[0];
 
-                // Sprawdź czy element audio już istnieje
+                // Element Audio - Oryginał (do głośników)
                 let audioEl = document.getElementById('audio-' + targetUid);
                 if (!audioEl) {
                     audioEl = document.createElement('audio');
                     audioEl.id = 'audio-' + targetUid;
                     audioEl.autoplay = true;
-                    // Ważne: dodajemy do DOM przed ustawieniem srcObject
+                    audioEl.playsInline = true;
                     document.getElementById('webrtc-audio-container').appendChild(audioEl);
                 }
 
                 audioEl.srcObject = stream;
 
-                // Spróbuj odpalić dźwięk
-                audioEl.play().catch(e => console.warn("Audio play blocked:", e));
+                // Próba odtworzenia
+                const playPromise = audioEl.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        console.warn("Autoplay blocked for " + targetUid, error);
+                        // Można tu dodać UI "Kliknij, aby odsłuchać"
+                    });
+                }
 
                 const myUid = getVoiceUid();
                 if (localMutes[myUid + '_Headphones']) audioEl.muted = true;
 
-                attachSpeakingVisualizer(stream, targetUid);
+                // Klonujemy strumień TYLKO dla analizatora (żeby nie wyciszał oryginału)
+                const clone = stream.clone();
+                visualizerStreams[targetUid] = clone;
+                attachSpeakingVisualizer(clone, targetUid);
             };
 
             pc.onconnectionstatechange = () => {
@@ -1542,12 +1569,10 @@
         async function handleSignalingMessage(msg) {
             const { type, sdp, candidate, from } = msg;
 
-            // Jeśli nie ma PC, stwórz je (dla offer)
             if (!peers[from]) {
                 if (type === 'offer') {
                     createPeerConnection(from);
                 } else {
-                    // Ignoruj osierocone odpowiedzi/kandydatów
                     return;
                 }
             }
@@ -1559,7 +1584,6 @@
                     console.log("Received Offer from", from);
                     await pc.setRemoteDescription(new RTCSessionDescription(sdp));
 
-                    // Przetwórz kolejkę ICE
                     if (pc.iceQueue.length > 0) {
                         for (const c of pc.iceQueue) await pc.addIceCandidate(c);
                         pc.iceQueue = [];
@@ -1573,14 +1597,12 @@
                     console.log("Received Answer from", from);
                     await pc.setRemoteDescription(new RTCSessionDescription(sdp));
 
-                    // Przetwórz kolejkę ICE
                     if (pc.iceQueue.length > 0) {
                         for (const c of pc.iceQueue) await pc.addIceCandidate(c);
                         pc.iceQueue = [];
                     }
                 }
                 else if (type === 'candidate') {
-                    // FIX: Jeśli remoteDescription nie jest gotowe, kolejkuj kandydata!
                     const cand = new RTCIceCandidate(candidate);
                     if (pc.remoteDescription && pc.remoteDescription.type) {
                         await pc.addIceCandidate(cand);
@@ -1605,6 +1627,7 @@
 
         // --- VISUALIZER ---
         function attachSpeakingVisualizer(stream, uid) {
+            // Używamy tego samego kontekstu, ale klonowanego strumienia
             if (!audioContext) {
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
@@ -1613,6 +1636,9 @@
                 const analyser = audioContext.createAnalyser();
                 analyser.fftSize = 256;
                 source.connect(analyser);
+                // WAŻNE: Nie podłączamy analyzera do destination, bo to zrobiłoby echo/sprzężenie
+                // Zwykły tag <audio> odtwarza dźwięk, analyzer tylko patrzy.
+
                 const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
                 if (visualizerIntervals[uid]) clearInterval(visualizerIntervals[uid]);
