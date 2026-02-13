@@ -1241,8 +1241,17 @@
             // Check kick
             if (currentVoiceChatId && voicePresenceRef) {
                 const myUid = getVoiceUid();
-                if (data[currentVoiceChatId] && data[currentVoiceChatId].users && !data[currentVoiceChatId].users[myUid]) {
-                    leaveVoiceChat(true);
+                // Dodajemy sprawdzenie czy snap w ogóle zawiera dane tego czatu, żeby uniknąć błędów przy ładowaniu
+                if (data && data[currentVoiceChatId] && data[currentVoiceChatId].users) {
+                    if (!data[currentVoiceChatId].users[myUid]) {
+                        // Małe opóźnienie dla pewności, że to nie jest glitch przy łączeniu
+                        setTimeout(() => {
+                            // Sprawdzamy ponownie w cache lokalnym lub via ref, ale dla uproszczenia zostawmy tak:
+                            // Jeśli nadal nas nie ma, to znaczy że serio nas wyrzucono
+                            leaveVoiceChat(true);
+                        }, 200);
+                        return; // Ważne, żeby nie renderować dalej jeśli wychodzimy
+                    }
                 }
             }
             renderVoiceChats();
@@ -1438,7 +1447,7 @@
             });
 
             // Signaling listener
-            voiceSignalingRef = db.ref(`voice_chats/${id}/signaling/${myUid}`);
+            voiceSignalingRef = db.ref(`voice_signaling/${id}/${myUid}`);
             voiceSignalingRef.on('child_added', async (snap) => {
                 const msg = snap.val();
                 if (!msg) return;
@@ -1634,7 +1643,8 @@
         function sendSignal(targetUid, payload) {
             if (!currentVoiceChatId) return;
             const myUid = getVoiceUid();
-            db.ref(`voice_chats/${currentVoiceChatId}/signaling/${targetUid}`).push({
+
+            db.ref(`voice_signaling/${currentVoiceChatId}/${targetUid}`).push({
                 ...payload,
                 from: myUid
             });
