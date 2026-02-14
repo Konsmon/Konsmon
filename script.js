@@ -1536,7 +1536,7 @@
 
         function createPeerConnection(targetUid) {
             // Jeśli połączenie już istnieje, nie twórz nowego
-            if (peerConnections[targetUid]) return;
+            if (peers[targetUid]) return peers[targetUid];
 
             console.log(">>> TWORZENIE PEER CONNECTION DLA:", targetUid);
 
@@ -1550,8 +1550,8 @@
 
             const pc = new RTCPeerConnection(rtcConfig);
 
-            // WAŻNE: Dodajemy do globalnej mapy, żeby initiateCall to widział
-            peerConnections[targetUid] = pc;
+            // ✅ POPRAWKA 1: Użyj 'peers' zamiast 'peerConnections'
+            peers[targetUid] = pc;
             pc.iceQueue = []; // Inicjalizacja kolejki
 
             // 1. Dodajemy nasz mikrofon do połączenia
@@ -1566,7 +1566,7 @@
                 if (event.candidate) {
                     sendSignal(targetUid, {
                         type: 'candidate',
-                        data: event.candidate
+                        candidate: event.candidate
                     });
                 }
             };
@@ -1579,7 +1579,7 @@
                 }
             };
 
-            // 4. ODBIERANIE AUDIO (To naprawia brak dźwięku)
+            // 4. ODBIERANIE AUDIO
             pc.ontrack = (event) => {
                 console.log(">>> OTRZYMANO STRUMIEŃ AUDIO OD:", targetUid);
                 const remoteStream = new MediaStream([event.track]);
@@ -1591,7 +1591,6 @@
                     audioEl.autoplay = true;
                     audioEl.playsInline = true;
 
-                    // Hack: Element musi być "na stronie", żeby grał, ale może być niewidoczny
                     audioEl.style.position = 'fixed';
                     audioEl.style.top = '0';
                     audioEl.style.opacity = '0';
@@ -1601,7 +1600,7 @@
                 }
 
                 audioEl.srcObject = remoteStream;
-                audioEl.muted = false; // Odciszamy
+                audioEl.muted = false;
 
                 const playPromise = audioEl.play();
                 if (playPromise !== undefined) {
@@ -1610,12 +1609,14 @@
                     });
                 }
 
-                // Wizualizacja (Visualizer) - w bloku try/catch żeby błąd grafiki nie psuł dźwięku
+                // Wizualizacja
                 try {
                     const clone = remoteStream.clone();
                     visualizerStreams[targetUid] = clone;
                     attachSpeakingVisualizer(clone, targetUid);
-                } catch (e) { console.warn("Visualizer error:", e); }
+                } catch (e) {
+                    console.warn("Visualizer error:", e);
+                }
             };
 
             return pc;
@@ -1653,7 +1654,7 @@
         }
 
         async function handleSignalingMessage(msg) {
-            const { type, sdp, candidate, from } = msg;
+            const { type, data, candidate, from } = msg;
 
             if (!peers[from]) {
                 if (type === 'offer') {
@@ -1668,7 +1669,11 @@
             try {
                 if (type === 'offer') {
                     console.log("Received Offer from", from);
-                    await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+                    // ✅ POPRAWKA 2: Nie używaj RTCSessionDescription
+                    await pc.setRemoteDescription(new RTCSessionDescription({
+                        type: 'offer',
+                        sdp: data.sdp
+                    }));
 
                     if (pc.iceQueue.length > 0) {
                         for (const c of pc.iceQueue) {
@@ -1683,14 +1688,23 @@
 
                     const answer = await pc.createAnswer();
                     await pc.setLocalDescription(answer);
-                    sendSignal(from, { type: 'answer', sdp: answer });
+                    sendSignal(from, { type: 'answer', data: answer });
                 }
                 else if (type === 'answer') {
                     console.log("Received Answer from", from);
-                    await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+                    await pc.setRemoteDescription(new RTCSessionDescription({
+                        type: 'answer',
+                        sdp: data.sdp
+                    }));
 
                     if (pc.iceQueue.length > 0) {
-                        for (const c of pc.iceQueue) await pc.addIceCandidate(c);
+                        for (const c of pc.iceQueue) {
+                            try {
+                                await pc.addIceCandidate(c);
+                            } catch (err) {
+                                console.warn("Error adding queued ice candidate", err);
+                            }
+                        }
                         pc.iceQueue = [];
                     }
                 }
