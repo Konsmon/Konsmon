@@ -1,4 +1,4 @@
-// FIREBASE CONFIG
+        // FIREBASE CONFIG
         const firebaseConfig = {
             apiKey: "AIzaSyBeDzJgPfga58CNlEFriKkxVBG-d04JXO4",
             authDomain: "konsmon-website.firebaseapp.com",
@@ -17,7 +17,6 @@
         // ADMIN PASSWORD
         let adminPassword = null;
 
-        // Pobranie hasła admina z bazy
         db.ref('admin/password').once('value').then(snap => {
             adminPassword = snap.val() || '';
         }).catch(err => {
@@ -97,7 +96,7 @@
         function adjustModalImage() {
             const imgEl = modalContent.querySelector('.modal-image');
             if (!imgEl) return;
-            const pad = 48; // total horizontal/vertical padding to leave
+            const pad = 48; // total horizontal vertical padding to leave
             const availW = Math.max(100, window.innerWidth - pad);
             const availH = Math.max(100, window.innerHeight - pad);
             const natW = imgEl.naturalWidth || imgEl.width || availW;
@@ -223,7 +222,7 @@
             }
             if (atIndices.length === 0) return [];
 
-            // Sort nicknames by length (desc) so we match longest name first
+            // Sort nicknames by length
             const sortedNicks = [...usersNicknamesLower].sort((a, b) => b.length - a.length);
 
             for (const idx of atIndices) {
@@ -232,7 +231,7 @@
 
                 for (const nickLower of sortedNicks) {
                     if (slice.startsWith(nickLower)) {
-                        // Ensure mention ends on boundary (space, punctuation, end)
+                        // Ensure mention ends on boundary
                         const endPos = idx + 1 + nickLower.length;
                         const nextChar = lowerText[endPos] || '';
                         if (!nextChar || /[\s.,!?;:()\[\]{}"'<>]/.test(nextChar)) {
@@ -494,8 +493,6 @@
         btnCreate.onclick = openCreateModal; createQuick.onclick = openCreateModal; btnRefresh.onclick = () => renderChatList(searchInput.value.trim());
 
 
-
-
         // Join modal
         function attemptJoin(id, skipPrompt = false, knownPass = '') {
             const chat = chatsCache[id];
@@ -562,9 +559,6 @@
                 }
             };
         }
-
-
-
 
 
         // Join chat
@@ -640,7 +634,6 @@
 
                 const bubble = document.createElement('div'); bubble.className = 'message';
 
-                // text (make URLs clickable)
                 if (m.text) {
                     // create nodes where URLs become anchors, using text nodes for safety
                     const urlRegex = /(?:https?:\/\/[^\s]+)|(?:www\.[^\s]+)/g;
@@ -1188,7 +1181,7 @@
                 { urls: 'stun:stun1.l.google.com:19302' }
             ],
             iceCandidatePoolSize: 10,
-            // To jest ważne: domyślnie jest 'all', ale warto się upewnić
+
             iceTransportPolicy: 'all'
         };
 
@@ -1410,13 +1403,11 @@
         }
 
         async function joinVoiceChat(id) {
-            console.log(">>> DOŁĄCZANIE DO CZATU:", id);
+            console.log(">>> CONECTING TO:", id);
             isIntentionalLeave = false;
 
-            // 1. Reset poprzedniego czatu
             if (currentVoiceChatId) leaveVoiceChat();
 
-            // 2. Inicjalizacja Audio Context
             if (!audioContext) {
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
@@ -1424,72 +1415,65 @@
                 await audioContext.resume();
             }
 
-            // 3. Pobranie mikrofonu
+            //mic
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-                console.log(">>> Mikrofon OK");
+                console.log(">>> Mic OK");
             } catch (err) {
                 console.error("Mic error:", err);
                 showAlert("Microphone access denied: " + err.message);
                 return;
             }
 
-            // Odtwórz dźwięk wejścia (opcjonalne)
             if (audioConnect) audioConnect.play().catch(() => { });
 
             currentVoiceChatId = id;
             const myUid = getVoiceUid();
 
-            // 4. Zapisz się w bazie obecności
             voicePresenceRef = db.ref(`voice_chats/${id}/users/${myUid}`);
             const userData = { nick: getVoiceNick(), joinedAt: Date.now() };
 
-            // Ustawiamy onDisconnect zanim wejdziemy
             await voicePresenceRef.onDisconnect().remove();
             await voicePresenceRef.set(userData);
-            console.log(">>> Zapisano w bazie obecności jako:", myUid);
+            console.log(">>> Saved in database as:", myUid);
 
-            // 5. Nasłuchiwanie na sygnały (NAPRAWIONE)
             voiceSignalingRef = db.ref(`voice_signaling/${id}/${myUid}`);
             voiceSignalingRef.on('child_added', async (snap) => {
                 const msg = snap.val();
                 if (!msg) return;
 
-                // Konsumujemy wiadomość (usuwamy z bazy)
                 snap.ref.remove();
 
-                // --- TU BYŁ BŁĄD (poprawione na msg.type) ---
-                console.log(">>> Otrzymano sygnał od:", msg.from, "Typ:", msg.type);
+                console.log(">>> Got signal from:", msg.from, "Typ:", msg.type);
 
                 await handleSignalingMessage(msg);
             });
 
-            // 6. Wizualizacja lokalna (zielona ramka dla siebie)
             try {
                 const myClone = localStream.clone();
                 visualizerStreams['local'] = myClone;
                 attachSpeakingVisualizer(myClone, myUid);
             } catch (e) {
-                console.warn("Błąd wizualizacji lokalnej:", e);
+                console.warn("ERROR, local vizualition:", e);
             }
 
-            // 7. INICJACJA POŁĄCZEŃ
-            console.log(">>> Pobieranie listy użytkowników, żeby zadzwonić...");
+            //conecetion
+            console.log(">>> Downloading users list ...");
 
             db.ref(`voice_chats/${id}/users`).once('value').then(snapshot => {
                 const users = snapshot.val();
                 if (!users) {
-                    console.log(">>> Nikogo innego tu nie ma (jestem pierwszy).");
+                    console.log(">>> You are first person in this room");
                     return;
                 }
 
                 const userIds = Object.keys(users);
-                console.log(">>> Znaleziono użytkowników w pokoju:", userIds);
+                console.log(">>>users have been found in room:", userIds);
 
                 userIds.forEach(targetUid => {
-                    // Dzwonimy do wszystkich OPRÓCZ siebie
+
                     if (targetUid !== myUid) {
-                        console.log(">>> DZWONIĘ DO:", targetUid);
+                        console.log(">>>CALLING TO :", targetUid);
                         initiateCall(targetUid);
                     }
                 });
@@ -1537,7 +1521,7 @@
         function createPeerConnection(targetUid) {
             if (peers[targetUid]) return peers[targetUid];
 
-            console.log(">>> TWORZENIE PEER CONNECTION DLA:", targetUid);
+            console.log(">>> CREATING PEER CONNECTION FOR:", targetUid);
 
             const rtcConfig = {
                 iceServers: [
@@ -1548,7 +1532,7 @@
             };
 
             const pc = new RTCPeerConnection(rtcConfig);
-            peers[targetUid] = pc; // Używamy poprawnej tablicy globalnej 'peers'
+            peers[targetUid] = pc;
             pc.iceQueue = [];
 
             if (localStream) {
@@ -1569,12 +1553,12 @@
             pc.oniceconnectionstatechange = () => {
                 console.log(`>>> STAN SIECI (${targetUid}):`, pc.iceConnectionState);
                 if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
-                    // Opcjonalnie: można tu spróbować restartować połączenie
+
                 }
             };
 
             pc.ontrack = (event) => {
-                console.log(">>> OTRZYMANO STRUMIEŃ AUDIO OD:", targetUid);
+                console.log(">>>RECEVED AUDIO FROM:", targetUid);
                 const remoteStream = event.streams[0] || new MediaStream([event.track]);
 
                 let audioEl = document.getElementById('audio-' + targetUid);
@@ -1584,7 +1568,6 @@
                     audioEl.autoplay = true;
                     audioEl.playsInline = true;
 
-                    // Ukryty kontener audio
                     const container = document.getElementById('webrtc-audio-container');
                     if (container) container.appendChild(audioEl);
                     else document.body.appendChild(audioEl);
@@ -1592,7 +1575,6 @@
 
                 audioEl.srcObject = remoteStream;
 
-                // Sprawdzenie lokalnego wyciszenia (jeśli user wcześniej wyciszył słuchawki)
                 const muteHeadphonesKey = targetUid + '_Headphones';
                 if (localMutes && localMutes[muteHeadphonesKey]) {
                     audioEl.muted = true;
@@ -1615,9 +1597,8 @@
         }
 
         async function initiateCall(targetUid) {
-            console.log(">>> INICJOWANIE POŁĄCZENIA DO:", targetUid);
+            console.log(">>>CREATING CONNECTION TO:", targetUid);
 
-            // Tworzymy połączenie i od razu przypisujemy wynik do zmiennej
             const pc = createPeerConnection(targetUid);
 
             if (!pc) {
@@ -1631,7 +1612,7 @@
 
                 sendSignal(targetUid, {
                     type: 'offer',
-                    data: { sdp: offer.sdp, type: offer.type } // Jawne przekazanie struktury
+                    data: { sdp: offer.sdp, type: offer.type } 
                 });
                 console.log(">>> Oferr sent to:", targetUid);
             } catch (err) {
@@ -1655,14 +1636,14 @@
             try {
                 if (type === 'offer') {
                     if (!data || !data.sdp) {
-                        console.warn(">>> Odebrano ofertę bez SDP, pomijam.");
+                        console.warn(">>>Got an offer without SDP");
                         return;
                     }
                     console.log("Received Offer from", from);
 
                     await pc.setRemoteDescription(new RTCSessionDescription(data));
 
-                    // Przetwarzanie kolejki ICE
+                    //ICE queue
                     if (pc.iceQueue && pc.iceQueue.length > 0) {
                         for (const c of pc.iceQueue) {
                             try {
@@ -1684,13 +1665,12 @@
                 }
                 else if (type === 'answer') {
                     if (!data || !data.sdp) {
-                        console.warn(">>> Odebrano odpowiedź bez SDP, pomijam.");
+                        console.warn(">>>Got an awnser without SDP");
                         return;
                     }
                     console.log("Received Answer from", from);
                     await pc.setRemoteDescription(new RTCSessionDescription(data));
 
-                    // Przetwarzanie kolejki ICE
                     if (pc.iceQueue && pc.iceQueue.length > 0) {
                         for (const c of pc.iceQueue) {
                             try {
