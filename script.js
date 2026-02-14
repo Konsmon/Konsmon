@@ -1535,7 +1535,6 @@
         }
 
         function createPeerConnection(targetUid) {
-            // Jeśli połączenie już istnieje, nie twórz nowego
             if (peers[targetUid]) return peers[targetUid];
 
             console.log(">>> TWORZENIE PEER CONNECTION DLA:", targetUid);
@@ -1549,40 +1548,34 @@
             };
 
             const pc = new RTCPeerConnection(rtcConfig);
+            peers[targetUid] = pc; // Używamy poprawnej tablicy globalnej 'peers'
+            pc.iceQueue = [];
 
-            // ✅ POPRAWKA 1: Użyj 'peers' zamiast 'peerConnections'
-            peers[targetUid] = pc;
-            pc.iceQueue = []; // Inicjalizacja kolejki
-
-            // 1. Dodajemy nasz mikrofon do połączenia
             if (localStream) {
                 localStream.getTracks().forEach(track => {
                     pc.addTrack(track, localStream);
                 });
             }
 
-            // 2. Obsługa kandydatów sieciowych (ICE)
             pc.onicecandidate = (event) => {
                 if (event.candidate) {
                     sendSignal(targetUid, {
                         type: 'candidate',
-                        candidate: event.candidate
+                        candidate: event.candidate.toJSON()
                     });
                 }
             };
 
-            // 3. Diagnostyka stanu połączenia
             pc.oniceconnectionstatechange = () => {
                 console.log(`>>> STAN SIECI (${targetUid}):`, pc.iceConnectionState);
-                if (pc.iceConnectionState === 'failed') {
-                    console.warn(">>> Połączenie zablokowane przez Firewall/Router!");
+                if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+                    // Opcjonalnie: można tu spróbować restartować połączenie
                 }
             };
 
-            // 4. ODBIERANIE AUDIO
             pc.ontrack = (event) => {
                 console.log(">>> OTRZYMANO STRUMIEŃ AUDIO OD:", targetUid);
-                const remoteStream = new MediaStream([event.track]);
+                const remoteStream = event.streams[0] || new MediaStream([event.track]);
 
                 let audioEl = document.getElementById('audio-' + targetUid);
                 if (!audioEl) {
@@ -1591,25 +1584,24 @@
                     audioEl.autoplay = true;
                     audioEl.playsInline = true;
 
-                    audioEl.style.position = 'fixed';
-                    audioEl.style.top = '0';
-                    audioEl.style.opacity = '0';
-                    audioEl.style.pointerEvents = 'none';
-
-                    document.body.appendChild(audioEl);
+                    // Ukryty kontener audio
+                    const container = document.getElementById('webrtc-audio-container');
+                    if (container) container.appendChild(audioEl);
+                    else document.body.appendChild(audioEl);
                 }
 
                 audioEl.srcObject = remoteStream;
-                audioEl.muted = false;
 
-                const playPromise = audioEl.play();
-                if (playPromise !== undefined) {
-                    playPromise.catch(e => {
-                        console.warn(">>> Autoplay zablokowany. Kliknij w stronę.", e);
-                    });
+                // Sprawdzenie lokalnego wyciszenia (jeśli user wcześniej wyciszył słuchawki)
+                const muteHeadphonesKey = targetUid + '_Headphones';
+                if (localMutes && localMutes[muteHeadphonesKey]) {
+                    audioEl.muted = true;
+                } else {
+                    audioEl.muted = false;
                 }
 
-                // Wizualizacja
+                audioEl.play().catch(e => console.warn("Autoplay block:", e));
+
                 try {
                     const clone = remoteStream.clone();
                     visualizerStreams[targetUid] = clone;
@@ -1625,31 +1617,25 @@
         async function initiateCall(targetUid) {
             console.log(">>> INICJOWANIE POŁĄCZENIA DO:", targetUid);
 
-            // 1. Tworzymy połączenie
-            createPeerConnection(targetUid);
-
-            // 2. KLUCZOWA POPRAWKA: Pobieramy obiekt 'pc' z globalnej mapy
-            // Wcześniej kod próbował użyć 'pc', którego tu nie było.
-            const pc = peerConnections[targetUid];
+            // Tworzymy połączenie i od razu przypisujemy wynik do zmiennej
+            const pc = createPeerConnection(targetUid);
 
             if (!pc) {
-                console.error(">>> BŁĄD KRYTYCZNY: Nie udało się utworzyć pc dla", targetUid);
+                console.error(">>>CRITICAL ERROR, failled to create pc for: ", targetUid);
                 return;
             }
 
             try {
-                // 3. Tworzymy ofertę (SDP)
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
 
-                // 4. Wysyłamy do drugiego użytkownika
                 sendSignal(targetUid, {
                     type: 'offer',
-                    data: offer
+                    data: { sdp: offer.sdp, type: offer.type } // Jawne przekazanie struktury
                 });
-                console.log(">>> Oferta wysłana do:", targetUid);
+                console.log(">>> Oferr sent to:", targetUid);
             } catch (err) {
-                console.error(">>> Błąd w initiateCall:", err);
+                console.error(">>>ERROR in initiateCall:", err);
             }
         }
 
@@ -1668,14 +1654,16 @@
 
             try {
                 if (type === 'offer') {
+                    if (!data || !data.sdp) {
+                        console.warn(">>> Odebrano ofertę bez SDP, pomijam.");
+                        return;
+                    }
                     console.log("Received Offer from", from);
-                    // ✅ POPRAWKA 2: Nie używaj RTCSessionDescription
-                    await pc.setRemoteDescription(new RTCSessionDescription({
-                        type: 'offer',
-                        sdp: data.sdp
-                    }));
 
-                    if (pc.iceQueue.length > 0) {
+                    await pc.setRemoteDescription(new RTCSessionDescription(data));
+
+                    // Przetwarzanie kolejki ICE
+                    if (pc.iceQueue && pc.iceQueue.length > 0) {
                         for (const c of pc.iceQueue) {
                             try {
                                 await pc.addIceCandidate(c);
@@ -1688,16 +1676,22 @@
 
                     const answer = await pc.createAnswer();
                     await pc.setLocalDescription(answer);
-                    sendSignal(from, { type: 'answer', data: answer });
+
+                    sendSignal(from, {
+                        type: 'answer',
+                        data: { sdp: answer.sdp, type: answer.type }
+                    });
                 }
                 else if (type === 'answer') {
+                    if (!data || !data.sdp) {
+                        console.warn(">>> Odebrano odpowiedź bez SDP, pomijam.");
+                        return;
+                    }
                     console.log("Received Answer from", from);
-                    await pc.setRemoteDescription(new RTCSessionDescription({
-                        type: 'answer',
-                        sdp: data.sdp
-                    }));
+                    await pc.setRemoteDescription(new RTCSessionDescription(data));
 
-                    if (pc.iceQueue.length > 0) {
+                    // Przetwarzanie kolejki ICE
+                    if (pc.iceQueue && pc.iceQueue.length > 0) {
                         for (const c of pc.iceQueue) {
                             try {
                                 await pc.addIceCandidate(c);
@@ -1709,11 +1703,13 @@
                     }
                 }
                 else if (type === 'candidate') {
+                    if (!candidate) return;
                     const cand = new RTCIceCandidate(candidate);
                     if (pc.remoteDescription && pc.remoteDescription.type) {
                         await pc.addIceCandidate(cand);
                     } else {
                         console.log("Queueing ICE candidate for", from);
+                        if (!pc.iceQueue) pc.iceQueue = [];
                         pc.iceQueue.push(cand);
                     }
                 }
