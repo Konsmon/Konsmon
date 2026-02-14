@@ -1123,7 +1123,6 @@
                     if (ov) ov.style.display = 'none';
                 }
 
-                // expose for other code
                 window.openMobileMenu = openMobileMenu;
                 window.closeMobileMenu = closeMobileMenu;
 
@@ -1149,12 +1148,11 @@
             } catch (e) { console.warn('mobile menu init failed', e); }
         })();
 
-        // Mobile detection: add `is-mobile` class and show mobile menu button when appropriate
         (function initMobileClass() {
             try {
                 const apply = () => {
                     const small = window.innerWidth <= 900;
-                    // Treat "mobile" only by viewport width so desktop touch devices don't trigger mobile layout
+
                     const mobile = small;
                     if (mobile) document.body.classList.add('is-mobile'); else document.body.classList.remove('is-mobile');
                 };
@@ -1164,9 +1162,7 @@
             } catch (e) { console.warn('initMobileClass failed', e); }
         })();
 
-        // ==========================================
-        // ====== WEBRTC VOICE CHAT SYSTEM ==========
-        // ==========================================
+        //WEBRTC VOICE CHAT SYSTEM
 
         let voiceChatsCache = {};
         let currentVoiceChatId = null;
@@ -1174,19 +1170,18 @@
         let voiceSignalingRef = null;
         let isIntentionalLeave = false;
 
-        // Dane lokalne
         let localAnonUid = null;
         let localAnonNick = null;
-        let localMutes = {}; // { uid_Mic: bool, uid_Headphones: bool }
+        let localMutes = {};
 
-        // WebRTC zmienne
+        // WebRTC
         let localStream = null;
-        let peers = {}; // { uid: RTCPeerConnection }
+        let peers = {}; 
         let audioContext = null;
         let visualizerIntervals = {};
-        let visualizerStreams = {}; // Przechowuje klony strumieni
+        let visualizerStreams = {};
 
-        // Konfiguracja serwerów STUN
+
         const rtcConfig = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -1199,14 +1194,11 @@
         const audioMute = new Audio('./audio/mute.mp3');
         const audioUnmute = new Audio('./audio/unmute.mp3');
 
-        // Kontener na elementy <audio> od innych
         if (!document.getElementById('webrtc-audio-container')) {
             const ac = document.createElement('div');
             ac.id = 'webrtc-audio-container';
             document.body.appendChild(ac);
         }
-
-        // --- POMOCNICZE FUNKCJE ---
 
         function getVoiceUid() {
             if (currentUser && currentUser.uid) return currentUser.uid;
@@ -1221,8 +1213,6 @@
             if (!localAnonNick) localAnonNick = 'Anon' + Math.floor(1000 + Math.random() * 9000);
             return localAnonNick;
         }
-
-        // --- UI & LISTA CZATÓW ---
 
         const voiceChatsRef = db.ref('voice_chats');
         const voiceChatListEl = document.getElementById('voiceChatList');
@@ -1240,9 +1230,8 @@
             voiceChatsCache = data;
 
             // Check kick
-            // Check kick
             if (currentVoiceChatId && voicePresenceRef) {
-                // JEŚLI WYCHODZIMY CELOWO, NIE SPRAWDZAJ KICKA
+
                 if (isIntentionalLeave) {
                     return;
                 }
@@ -1250,7 +1239,7 @@
                 const myUid = getVoiceUid();
                 if (data && data[currentVoiceChatId] && data[currentVoiceChatId].users) {
                     if (!data[currentVoiceChatId].users[myUid]) {
-                        // ... logika kicka ...
+
                         leaveVoiceChat(true);
                     }
                 }
@@ -1417,22 +1406,25 @@
             };
         }
 
-        // --- GŁÓWNA LOGIKA WEBRTC ---
         async function joinVoiceChat(id) {
+            console.log(">>> DOŁĄCZANIE DO CZATU:", id);
             isIntentionalLeave = false;
+
+            // 1. Reset poprzedniego czatu
             if (currentVoiceChatId) leaveVoiceChat();
 
-            // Upewnij się, że AudioContext jest aktywny (fix na ciszę)
+            // 2. Inicjalizacja Audio Context (naprawa braku dźwięku)
             if (!audioContext) {
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
-            // Zawsze próbuj wznowić kontekst przy dołączaniu
             if (audioContext.state === 'suspended') {
                 await audioContext.resume();
             }
 
+            // 3. Pobranie mikrofonu
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                console.log(">>> Mikrofon OK");
             } catch (err) {
                 console.error("Mic error:", err);
                 showAlert("Microphone access denied: " + err.message);
@@ -1443,35 +1435,51 @@
             currentVoiceChatId = id;
             const myUid = getVoiceUid();
 
+            // 4. Zapisz się w bazie obecności
             voicePresenceRef = db.ref(`voice_chats/${id}/users/${myUid}`);
             const userData = { nick: getVoiceNick(), joinedAt: Date.now() };
-            voicePresenceRef.onDisconnect().remove().then(() => {
-                voicePresenceRef.set(userData);
-            });
 
-            // Signaling listener
+            // Używamy await, żeby mieć pewność, że jesteśmy w bazie ZANIM zaczniemy dzwonić
+            await voicePresenceRef.onDisconnect().remove();
+            await voicePresenceRef.set(userData);
+            console.log(">>> Zapisano w bazie obecności jako:", myUid);
+
+            // 5. Nasłuchiwanie na sygnały (oferty/odpowiedzi) od innych
             voiceSignalingRef = db.ref(`voice_signaling/${id}/${myUid}`);
             voiceSignalingRef.on('child_added', async (snap) => {
                 const msg = snap.val();
                 if (!msg) return;
-                snap.ref.remove(); // Consume message
+                snap.ref.remove(); // Skasuj wiadomość po odebraniu
+                console.log(">>> Otrzymano sygnał od:", msg.from, type);
                 await handleSignalingMessage(msg);
             });
 
-            // Lokalna zielona ramka (z klonu!)
+            // 6. Wizualizacja lokalna
             const myClone = localStream.clone();
             visualizerStreams['local'] = myClone;
             attachSpeakingVisualizer(myClone, myUid);
 
-            // Zadzwoń do innych
-            const chatData = voiceChatsCache[id];
-            if (chatData && chatData.users) {
-                Object.keys(chatData.users).forEach(targetUid => {
+            // 7. INICJACJA POŁĄCZEŃ (To tu był błąd!)
+            // Zamiast ufać cache, pobieramy świeżą listę użytkowników z bazy
+            console.log(">>> Pobieranie listy użytkowników, żeby zadzwonić...");
+
+            db.ref(`voice_chats/${id}/users`).once('value').then(snapshot => {
+                const users = snapshot.val();
+                if (!users) {
+                    console.log(">>> Nikogo innego tu nie ma.");
+                    return;
+                }
+
+                const userIds = Object.keys(users);
+                console.log(">>> Znaleziono użytkowników w pokoju:", userIds);
+
+                userIds.forEach(targetUid => {
                     if (targetUid !== myUid) {
+                        console.log(">>> DZWONIĘ DO:", targetUid);
                         initiateCall(targetUid);
                     }
                 });
-            }
+            });
         }
 
         function leaveVoiceChat(wasKicked = false) {
@@ -1490,9 +1498,6 @@
 
             Object.values(visualizerIntervals).forEach(iv => clearInterval(iv));
             visualizerIntervals = {};
-
-            // Nie zamykamy audioContext całkowicie, żeby można było wejść ponownie bez błędów
-            // if (audioContext) { audioContext.close(); audioContext = null; } 
 
             const container = document.getElementById('webrtc-audio-container');
             if (container) container.innerHTML = '';
@@ -1515,8 +1520,6 @@
             if (wasKicked) showAlert("You were kicked from the voice chat.");
         }
 
-        // --- WEBRTC CONNECTION HANDLING ---
-
         function createPeerConnection(targetUid) {
             console.log("Creating PC for:", targetUid);
             const pc = new RTCPeerConnection(rtcConfig);
@@ -1529,29 +1532,23 @@
             };
 
             pc.ontrack = (event) => {
-                // 1. Tworzymy nowy, czysty MediaStream tylko z tej ścieżki audio
-                // (To naprawia błędy, gdzie event.streams[0] bywa pusty lub zablokowany)
                 const remoteStream = new MediaStream([event.track]);
 
-                // 2. Szukamy lub tworzymy element audio
                 let audioEl = document.getElementById('audio-' + targetUid);
                 if (!audioEl) {
                     audioEl = document.createElement('audio');
                     audioEl.id = 'audio-' + targetUid;
                     audioEl.autoplay = true;
-                    audioEl.playsInline = true; // Ważne dla Safari/Mobile
+                    audioEl.playsInline = true; 
                     audioEl.controls = false;
 
-                    // Dodajemy do kontenera
                     const container = document.getElementById('webrtc-audio-container');
                     if (container) container.appendChild(audioEl);
                 }
 
-                // 3. Przypisujemy strumień
                 audioEl.srcObject = remoteStream;
                 audioEl.volume = 1.0;
 
-                // 4. Obsługa wyciszenia lokalnego (jeśli ktoś ma wyciszone słuchawki)
                 const myUid = getVoiceUid();
                 if (localMutes[myUid + '_Headphones']) {
                     audioEl.muted = true;
@@ -1559,21 +1556,18 @@
                     audioEl.muted = false;
                 }
 
-                // 5. Brutalne wymuszenie odtwarzania (Promise handling)
                 const playPromise = audioEl.play();
                 if (playPromise !== undefined) {
                     playPromise.then(() => {
                         console.log("Audio playing for", targetUid);
                     }).catch(error => {
                         console.warn("Autoplay blocked for " + targetUid + ". Attempting explicit resume.", error);
-                        // Jeśli przeglądarka zablokowała autoplay, spróbujmy odciszyć
+
                         audioEl.muted = false;
                         audioEl.play();
                     });
                 }
 
-                // 6. Visualizer - używamy klonu, aby nie zakłócać głównego audio
-                // (To już miałeś, ale upewnijmy się, że klonujemy remoteStream)
                 try {
                     const clone = remoteStream.clone();
                     visualizerStreams[targetUid] = clone;
@@ -1668,9 +1662,8 @@
             });
         }
 
-        // --- VISUALIZER ---
         function attachSpeakingVisualizer(stream, uid) {
-            // Używamy tego samego kontekstu, ale klonowanego strumienia
+
             if (!audioContext) {
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
@@ -1679,8 +1672,6 @@
                 const analyser = audioContext.createAnalyser();
                 analyser.fftSize = 256;
                 source.connect(analyser);
-                // WAŻNE: Nie podłączamy analyzera do destination, bo to zrobiłoby echo/sprzężenie
-                // Zwykły tag <audio> odtwarza dźwięk, analyzer tylko patrzy.
 
                 const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
