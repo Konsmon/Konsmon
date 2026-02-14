@@ -1416,7 +1416,7 @@
             // 1. Reset poprzedniego czatu
             if (currentVoiceChatId) leaveVoiceChat();
 
-            // 2. Inicjalizacja Audio Context (naprawa braku dźwięku)
+            // 2. Inicjalizacja Audio Context
             if (!audioContext) {
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
@@ -1434,7 +1434,9 @@
                 return;
             }
 
-            audioConnect.play().catch(() => { });
+            // Odtwórz dźwięk wejścia (opcjonalne)
+            if (audioConnect) audioConnect.play().catch(() => { });
+
             currentVoiceChatId = id;
             const myUid = getVoiceUid();
 
@@ -1442,34 +1444,42 @@
             voicePresenceRef = db.ref(`voice_chats/${id}/users/${myUid}`);
             const userData = { nick: getVoiceNick(), joinedAt: Date.now() };
 
-            // Używamy await, żeby mieć pewność, że jesteśmy w bazie ZANIM zaczniemy dzwonić
+            // Ustawiamy onDisconnect zanim wejdziemy
             await voicePresenceRef.onDisconnect().remove();
             await voicePresenceRef.set(userData);
             console.log(">>> Zapisano w bazie obecności jako:", myUid);
 
-            // 5. Nasłuchiwanie na sygnały (oferty/odpowiedzi) od innych
+            // 5. Nasłuchiwanie na sygnały (NAPRAWIONE)
             voiceSignalingRef = db.ref(`voice_signaling/${id}/${myUid}`);
             voiceSignalingRef.on('child_added', async (snap) => {
                 const msg = snap.val();
                 if (!msg) return;
-                snap.ref.remove(); // Skasuj wiadomość po odebraniu
-                console.log(">>> Otrzymano sygnał od:", msg.from, type);
+
+                // Konsumujemy wiadomość (usuwamy z bazy)
+                snap.ref.remove();
+
+                // --- TU BYŁ BŁĄD (poprawione na msg.type) ---
+                console.log(">>> Otrzymano sygnał od:", msg.from, "Typ:", msg.type);
+
                 await handleSignalingMessage(msg);
             });
 
-            // 6. Wizualizacja lokalna
-            const myClone = localStream.clone();
-            visualizerStreams['local'] = myClone;
-            attachSpeakingVisualizer(myClone, myUid);
+            // 6. Wizualizacja lokalna (zielona ramka dla siebie)
+            try {
+                const myClone = localStream.clone();
+                visualizerStreams['local'] = myClone;
+                attachSpeakingVisualizer(myClone, myUid);
+            } catch (e) {
+                console.warn("Błąd wizualizacji lokalnej:", e);
+            }
 
-            // 7. INICJACJA POŁĄCZEŃ (To tu był błąd!)
-            // Zamiast ufać cache, pobieramy świeżą listę użytkowników z bazy
+            // 7. INICJACJA POŁĄCZEŃ
             console.log(">>> Pobieranie listy użytkowników, żeby zadzwonić...");
 
             db.ref(`voice_chats/${id}/users`).once('value').then(snapshot => {
                 const users = snapshot.val();
                 if (!users) {
-                    console.log(">>> Nikogo innego tu nie ma.");
+                    console.log(">>> Nikogo innego tu nie ma (jestem pierwszy).");
                     return;
                 }
 
@@ -1477,6 +1487,7 @@
                 console.log(">>> Znaleziono użytkowników w pokoju:", userIds);
 
                 userIds.forEach(targetUid => {
+                    // Dzwonimy do wszystkich OPRÓCZ siebie
                     if (targetUid !== myUid) {
                         console.log(">>> DZWONIĘ DO:", targetUid);
                         initiateCall(targetUid);
