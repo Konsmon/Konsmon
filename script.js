@@ -1535,31 +1535,53 @@
         }
 
         function createPeerConnection(targetUid) {
-            console.log("Creating PC for:", targetUid);
+            // Jeśli połączenie już istnieje, nie twórz nowego
+            if (peerConnections[targetUid]) return;
+
+            console.log(">>> TWORZENIE PEER CONNECTION DLA:", targetUid);
+
+            const rtcConfig = {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ],
+                iceCandidatePoolSize: 10
+            };
+
             const pc = new RTCPeerConnection(rtcConfig);
-            pc.iceQueue = [];
 
-            // Wklej to zaraz pod: const pc = new RTCPeerConnection(rtcConfig);
+            // WAŻNE: Dodajemy do globalnej mapy, żeby initiateCall to widział
+            peerConnections[targetUid] = pc;
+            pc.iceQueue = []; // Inicjalizacja kolejki
 
-            pc.oniceconnectionstatechange = () => {
-                console.log(`>>> STAN POŁĄCZENIA SIECIOWEGO (${targetUid}):`, pc.iceConnectionState);
-                if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
-                    console.error(">>> BŁĄD SIECI: Firewall lub Router zablokował połączenie!");
-                    showAlert("Connection failed. Check Firewall.");
-                }
-            };
+            // 1. Dodajemy nasz mikrofon do połączenia
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    pc.addTrack(track, localStream);
+                });
+            }
 
-            pc.onicegatheringstatechange = () => {
-                console.log(`>>> ZBIERANIE KANDYDATÓW (${targetUid}):`, pc.iceGatheringState);
-            };
-
+            // 2. Obsługa kandydatów sieciowych (ICE)
             pc.onicecandidate = (event) => {
                 if (event.candidate) {
-                    sendSignal(targetUid, { type: 'candidate', candidate: event.candidate });
+                    sendSignal(targetUid, {
+                        type: 'candidate',
+                        data: event.candidate
+                    });
                 }
             };
 
+            // 3. Diagnostyka stanu połączenia
+            pc.oniceconnectionstatechange = () => {
+                console.log(`>>> STAN SIECI (${targetUid}):`, pc.iceConnectionState);
+                if (pc.iceConnectionState === 'failed') {
+                    console.warn(">>> Połączenie zablokowane przez Firewall/Router!");
+                }
+            };
+
+            // 4. ODBIERANIE AUDIO (To naprawia brak dźwięku)
             pc.ontrack = (event) => {
+                console.log(">>> OTRZYMANO STRUMIEŃ AUDIO OD:", targetUid);
                 const remoteStream = new MediaStream([event.track]);
 
                 let audioEl = document.getElementById('audio-' + targetUid);
@@ -1567,61 +1589,67 @@
                     audioEl = document.createElement('audio');
                     audioEl.id = 'audio-' + targetUid;
                     audioEl.autoplay = true;
-                    audioEl.playsInline = true; 
-                    audioEl.controls = false;
+                    audioEl.playsInline = true;
 
-                    const container = document.getElementById('webrtc-audio-container');
-                    if (container) container.appendChild(audioEl);
+                    // Hack: Element musi być "na stronie", żeby grał, ale może być niewidoczny
+                    audioEl.style.position = 'fixed';
+                    audioEl.style.top = '0';
+                    audioEl.style.opacity = '0';
+                    audioEl.style.pointerEvents = 'none';
+
+                    document.body.appendChild(audioEl);
                 }
 
                 audioEl.srcObject = remoteStream;
-                audioEl.volume = 1.0;
-
-                const myUid = getVoiceUid();
-                if (localMutes[myUid + '_Headphones']) {
-                    audioEl.muted = true;
-                } else {
-                    audioEl.muted = false;
-                }
+                audioEl.muted = false; // Odciszamy
 
                 const playPromise = audioEl.play();
                 if (playPromise !== undefined) {
-                    playPromise.then(() => {
-                        console.log("Audio playing for", targetUid);
-                    }).catch(error => {
-                        console.warn("Autoplay blocked for " + targetUid + ". Attempting explicit resume.", error);
-
-                        audioEl.muted = false;
-                        audioEl.play();
+                    playPromise.catch(e => {
+                        console.warn(">>> Autoplay zablokowany. Kliknij w stronę.", e);
                     });
                 }
 
+                // Wizualizacja (Visualizer) - w bloku try/catch żeby błąd grafiki nie psuł dźwięku
                 try {
                     const clone = remoteStream.clone();
                     visualizerStreams[targetUid] = clone;
                     attachSpeakingVisualizer(clone, targetUid);
-                } catch (e) {
-                    console.warn("Visualizer error", e);
-                }
+                } catch (e) { console.warn("Visualizer error:", e); }
             };
 
-            pc.onconnectionstatechange = () => {
-                console.log(`Connection with ${targetUid}: ${pc.connectionState}`);
-            };
-
-            if (localStream) {
-                localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-            }
-
-            peers[targetUid] = pc;
             return pc;
         }
 
         async function initiateCall(targetUid) {
-            const pc = createPeerConnection(targetUid);
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            sendSignal(targetUid, { type: 'offer', sdp: offer });
+            console.log(">>> INICJOWANIE POŁĄCZENIA DO:", targetUid);
+
+            // 1. Tworzymy połączenie
+            createPeerConnection(targetUid);
+
+            // 2. KLUCZOWA POPRAWKA: Pobieramy obiekt 'pc' z globalnej mapy
+            // Wcześniej kod próbował użyć 'pc', którego tu nie było.
+            const pc = peerConnections[targetUid];
+
+            if (!pc) {
+                console.error(">>> BŁĄD KRYTYCZNY: Nie udało się utworzyć pc dla", targetUid);
+                return;
+            }
+
+            try {
+                // 3. Tworzymy ofertę (SDP)
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+
+                // 4. Wysyłamy do drugiego użytkownika
+                sendSignal(targetUid, {
+                    type: 'offer',
+                    data: offer
+                });
+                console.log(">>> Oferta wysłana do:", targetUid);
+            } catch (err) {
+                console.error(">>> Błąd w initiateCall:", err);
+            }
         }
 
         async function handleSignalingMessage(msg) {
