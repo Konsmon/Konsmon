@@ -1525,6 +1525,20 @@
             const pc = new RTCPeerConnection(rtcConfig);
             pc.iceQueue = [];
 
+            // Wklej to zaraz pod: const pc = new RTCPeerConnection(rtcConfig);
+
+            pc.oniceconnectionstatechange = () => {
+                console.log(`>>> STAN POŁĄCZENIA SIECIOWEGO (${targetUid}):`, pc.iceConnectionState);
+                if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+                    console.error(">>> BŁĄD SIECI: Firewall lub Router zablokował połączenie!");
+                    showAlert("Connection failed. Check Firewall.");
+                }
+            };
+
+            pc.onicegatheringstatechange = () => {
+                console.log(`>>> ZBIERANIE KANDYDATÓW (${targetUid}):`, pc.iceGatheringState);
+            };
+
             pc.onicecandidate = (event) => {
                 if (event.candidate) {
                     sendSignal(targetUid, { type: 'candidate', candidate: event.candidate });
