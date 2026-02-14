@@ -1186,7 +1186,10 @@
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' }
-            ]
+            ],
+            iceCandidatePoolSize: 10,
+            // To jest ważne: domyślnie jest 'all', ale warto się upewnić
+            iceTransportPolicy: 'all'
         };
 
         const audioConnect = new Audio('./audio/con.mp3');
