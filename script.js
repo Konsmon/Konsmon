@@ -72,7 +72,7 @@ let isIntentionalLeave = false;
 let serversCache = {}; // Stores the entire server tree
 
 // Track where the user is
-let currentServerId = null;
+let expandedServers = new Set();
 let currentChannelId = null;
 let currentChannelType = null; // 'text' or 'voice'
 
@@ -82,7 +82,7 @@ let localMutes = {};
 
 // WebRTC
 let currentMicId = localStorage.getItem('konsmon_mic_id') || 'default';
-let micSensitivity = parseInt(localStorage.getItem('konsmon_mic_sens') || '15'); // 0-100 threshold
+let micSensitivity = parseInt(localStorage.getItem('konsmon_mic_sens') || '0'); // 0-100 threshold
 let vadInterval = null;
 let testAudioContext = null;
 let testStream = null;
@@ -377,19 +377,23 @@ function renderServerList(filter) {
     );
 
     filtered.forEach(([serverId, server]) => {
-        const isExpanded = (currentServerId === serverId);
+        // ZMIANA: Sprawdzamy czy serwer jest w zbiorze otwartych
+        const isExpanded = expandedServers.has(serverId);
+
         const serverDiv = document.createElement('div');
         serverDiv.className = 'tree-item tree-server';
+        // Opcjonalnie: jeśli chcesz, aby nagłówek serwera też się świecił gdy jest rozwinięty:
         if (isExpanded) serverDiv.classList.add('active');
 
         const arrow = isExpanded ? '▼' : '▶';
         serverDiv.innerHTML = `<span class="tree-prefix" style="font-size:10px; vertical-align:middle; margin-right:6px;">${arrow}</span>${escapeHtml(server.name)}`;
 
         serverDiv.onclick = () => {
-            if (currentServerId === serverId) {
-                currentServerId = null;
+            // ZMIANA: Logika wielokrotnego rozwijania (Set)
+            if (expandedServers.has(serverId)) {
+                expandedServers.delete(serverId);
             } else {
-                currentServerId = serverId;
+                expandedServers.add(serverId);
             }
             renderServerList();
         };
@@ -405,15 +409,19 @@ function renderServerList(filter) {
                 Object.entries(server.channels.text).forEach(([channelId, channelData]) => {
                     const chanDiv = document.createElement('div');
                     chanDiv.className = 'tree-item tree-channel indent-2';
+                    // ZMIANA: Sprawdzamy currentChatId bezpośrednio dla podświetlenia
                     if (currentChatId === channelId) chanDiv.classList.add('active');
                     chanDiv.innerHTML = `<span class="tree-prefix">|_</span><span style="opacity:0.7">#</span> ${escapeHtml(channelData.name)}`;
 
                     chanDiv.onclick = () => {
                         checkServerAccess(serverId, () => {
+                            // ZMIANA: Ustawiamy ID natychmiast przed renderowaniem
+                            currentChatId = channelId;
                             currentChannelId = channelId;
                             currentChannelType = 'text';
-                            renderServerList();
-                            joinChat(channelId);
+
+                            renderServerList(); // Odśwież widok (teraz podświetli od razu)
+                            joinChat(channelId); // Dołącz do logiki
                         });
                     };
                     listEl.appendChild(chanDiv);
@@ -531,7 +539,13 @@ function renderVoiceUserInTree(container, channelId, uid, uData) {
 
         // Wizualne zaznaczenie (czerwony filtr), jeśli wyciszone
         if (localMutes[stateKey]) {
-            btn.style.filter = 'grayscale(100%) brightness(50%) sepia(100%) hue-rotate(-50deg) saturate(600%) contrast(0.8)';
+            btn.style.filter = 'none'; // Usuwamy stary filtr
+            btn.style.background = 'rgba(255, 0, 0, 1)'; // Czerwone tło
+            btn.style.color = 'white';
+            btn.style.borderRadius = '4px';
+        } else {
+            btn.style.background = 'transparent';
+            btn.style.color = '';
         }
 
         btn.onclick = (e) => {
@@ -1075,7 +1089,37 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal()
 
 
 // --- WEBRTC VOICE ---
-const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }], iceTransportPolicy: 'all' };
+const rtcConfig = {
+    iceServers: [
+        // Standardowe serwery STUN Google (rozszerzona lista)
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' },
+
+        // Darmowy serwer TURN z projektu OpenRelay (pozwala ominąć trudne routery)
+        // UWAGA: To jest serwer publiczny, używaj go tylko do testów/małych projektów.
+        // Jeśli przestanie działać, będziesz musiał założyć darmowe konto np. na metered.ca
+        {
+            urls: "turn:openrelay.metered.ca:80",
+            username: "openrelayproject",
+            credential: "openrelayproject"
+        },
+        {
+            urls: "turn:openrelay.metered.ca:443",
+            username: "openrelayproject",
+            credential: "openrelayproject"
+        },
+        {
+            urls: "turn:openrelay.metered.ca:443?transport=tcp",
+            username: "openrelayproject",
+            credential: "openrelayproject"
+        }
+    ],
+    iceTransportPolicy: 'all',
+    iceCandidatePoolSize: 10
+};
 const audioConnect = new Audio('./audio/con.mp3');
 const audioDisconnect = new Audio('./audio/discon.mp3');
 const audioMute = new Audio('./audio/mute.mp3');
@@ -1256,7 +1300,8 @@ function createPeerConnection(targetUid) {
 
         audioEl.srcObject = remoteStream;
         const key = targetUid + '_Headphones';
-        audioEl.muted = (localMutes && localMutes[key]) ? true : false;
+        // Uwzględniamy lokalne wyciszenie LUB globalne wyciszenie
+        audioEl.muted = (globalSoundMuted || (localMutes && localMutes[key])) ? true : false;
 
         audioEl.play().catch(err => console.warn("Autoplay blocked:", err));
 
@@ -1267,6 +1312,8 @@ function createPeerConnection(targetUid) {
             attachSpeakingVisualizer(clone, targetUid);
         } catch (e) { }
     };
+
+
 
     return pc;
 }
@@ -1566,44 +1613,65 @@ async function openVoiceSettingsModal(channelId = null) {
 function startPingMonitor(channelId) {
     if (pingInterval) clearInterval(pingInterval);
 
+    // Zmniejszyłem interwał do 1000ms (1 sekunda), żeby ping był bardziej "żywy"
     pingInterval = setInterval(async () => {
         const el = document.getElementById(`ping-${channelId}`);
-        if (!el || !peers || Object.keys(peers).length === 0) {
-            if (el) el.textContent = '';
+
+        // Jeśli element nie istnieje (np. wyszliśmy z menu), nic nie rób
+        if (!el) return;
+
+        // Jeśli nie ma żadnych połączonych użytkowników, wyczyść ping i zakończ
+        if (!peers || Object.keys(peers).length === 0) {
+            el.textContent = '';
             return;
         }
 
         let totalRtt = 0;
         let count = 0;
 
-        const promises = Object.values(peers).map(pc => pc.getStats(null));
-        const reports = await Promise.all(promises);
+        try {
+            const promises = Object.values(peers).map(pc => pc.getStats(null));
+            const reports = await Promise.all(promises);
 
-        reports.forEach(stats => {
-            stats.forEach(report => {
-                if (report.type === 'candidate-pair' && report.state === 'succeeded' && report.currentRoundTripTime) {
-                    totalRtt += report.currentRoundTripTime;
-                    count++;
-                }
+            reports.forEach(stats => {
+                stats.forEach(report => {
+                    // Szukamy aktywnej pary połączeniowej
+                    if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                        // Pobieramy aktualny czas RTT
+                        if (typeof report.currentRoundTripTime === 'number') {
+                            totalRtt += report.currentRoundTripTime;
+                            count++;
+                        }
+                    }
+                });
             });
-        });
 
-        if (count > 0) {
-            const avgMs = Math.round((totalRtt / count) * 1000);
-            el.textContent = `ping: ${avgMs}ms`;
+            if (count > 0) {
+                const avgMs = Math.round((totalRtt / count) * 1000);
+                el.textContent = `ping: ${avgMs}ms`;
 
-            if (avgMs < 50) {
-                el.style.color = '#22c55e';
-            } else if (avgMs < 100) {
-                el.style.color = '#f97316';
-            } else {
-                el.style.color = '#ef4444';
+                if (avgMs < 50) {
+                    el.style.color = '#22c55e'; // Zielony
+                } else if (avgMs < 100) {
+                    el.style.color = '#f97316'; // Pomarańczowy
+                } else {
+                    el.style.color = '#ef4444'; // Czerwony
+                }
             }
-        } else {
-            el.textContent = '';
+            // WAŻNE: Usunąłem sekcję "else", która czyściła tekst.
+            // Dzięki temu, jeśli przez chwilę brakuje danych (cisza),
+            // na ekranie zostaje ostatni znany wynik.
+
+        } catch (err) {
+            console.warn("Ping monitor error:", err);
         }
-    }, 2000);
+    }, 1000);
 }
+
+// --- GLOBAL CONTROLS (MUTE/DEAFEN) ---
+let globalMicMuted = false;
+let globalSoundMuted = false;
+
 
 // Helper for the modal test bar
 async function startMicTest(deviceId) {
