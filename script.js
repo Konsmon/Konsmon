@@ -87,6 +87,7 @@ let vadInterval = null;
 let testAudioContext = null;
 let testStream = null;
 let unlockedServers = new Set();
+let pingInterval = null;
 
 let localStream = null;
 let peers = {};
@@ -385,9 +386,6 @@ function renderServerList(filter) {
         serverDiv.innerHTML = `<span class="tree-prefix" style="font-size:10px; vertical-align:middle; margin-right:6px;">${arrow}</span>${escapeHtml(server.name)}`;
 
         serverDiv.onclick = () => {
-            // Przy kliknięciu w nagłówek serwera też możemy pytać o hasło, ale 
-            // UX-owo lepiej pytać przy próbie wejścia na kanał, żeby widzieć strukturę.
-            // Tutaj zostawiamy samo zwijanie/rozwijanie.
             if (currentServerId === serverId) {
                 currentServerId = null;
             } else {
@@ -398,7 +396,6 @@ function renderServerList(filter) {
         listEl.appendChild(serverDiv);
 
         if (isExpanded || filter) {
-            // --- TEXT ---
             const txtCat = document.createElement('div');
             txtCat.className = 'tree-item tree-category indent-1';
             txtCat.innerHTML = `<span class="tree-prefix">|_</span>TEXT CHATS <span class="add-channel-btn" title="Create Text Channel" onclick="openChannelCreateModal('${serverId}', 'text')">+</span>`;
@@ -412,7 +409,6 @@ function renderServerList(filter) {
                     chanDiv.innerHTML = `<span class="tree-prefix">|_</span><span style="opacity:0.7">#</span> ${escapeHtml(channelData.name)}`;
 
                     chanDiv.onclick = () => {
-                        // SPRAWDZANIE HASŁA PRZED DOŁĄCZENIEM
                         checkServerAccess(serverId, () => {
                             currentChannelId = channelId;
                             currentChannelType = 'text';
@@ -424,7 +420,6 @@ function renderServerList(filter) {
                 });
             }
 
-            // --- VOICE ---
             const voiceCat = document.createElement('div');
             voiceCat.className = 'tree-item tree-category indent-1';
             voiceCat.innerHTML = `<span class="tree-prefix">|_</span>VOICE CHATS <span class="add-channel-btn" title="Create Voice Channel" onclick="openChannelCreateModal('${serverId}', 'voice')">+</span>`;
@@ -442,7 +437,10 @@ function renderServerList(filter) {
                     chanDiv.style.paddingRight = '6px';
 
                     chanDiv.innerHTML = `
-                        <span><span class="tree-prefix">|_</span>🔊 ${escapeHtml(channelData.name)}</span>
+                        <span style="display:flex;align-items:center;overflow:hidden;">
+                            <span class="tree-prefix">|_</span>🔊 ${escapeHtml(channelData.name)}
+                            <span id="ping-${channelId}" style="margin-left:8px;font-size:11px;font-family:monospace;font-weight:bold;"></span>
+                        </span>
                         <span class="settings-icon" title="Voice Settings">⚙</span>
                     `;
 
@@ -451,7 +449,6 @@ function renderServerList(filter) {
                             openVoiceSettingsModal(channelId);
                             return;
                         }
-                        // SPRAWDZANIE HASŁA PRZED DOŁĄCZENIEM
                         checkServerAccess(serverId, () => {
                             currentChannelId = channelId;
                             currentChannelType = 'voice';
@@ -1104,17 +1101,17 @@ async function joinVoiceChat(id) {
 
     if (currentVoiceChatId) leaveVoiceChat();
 
-    if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
     if (audioContext.state === 'suspended') await audioContext.resume();
 
     try {
-        // Use selected device and advanced constraints
         localStream = await navigator.mediaDevices.getUserMedia({
             audio: {
                 deviceId: currentMicId !== 'default' ? { exact: currentMicId } : undefined,
                 echoCancellation: true,
                 noiseSuppression: true,
-                autoGainControl: false // Disable AGC to allow manual gate to work better
+                autoGainControl: false,
+                latency: 0
             },
             video: false
         });
@@ -1129,12 +1126,11 @@ async function joinVoiceChat(id) {
     currentVoiceChatId = id;
     const myUid = getVoiceUid();
 
-    // VAD / Noise Gate Logic (The "Anti-Keyboard" system)
     if (vadInterval) clearInterval(vadInterval);
 
-    // Create local analyzer for the Gate
-    const vadCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const vadSrc = vadCtx.createMediaStreamSource(localStream);
+    const vadStream = localStream.clone();
+    const vadCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+    const vadSrc = vadCtx.createMediaStreamSource(vadStream);
     const vadAnalyser = vadCtx.createAnalyser();
     vadAnalyser.fftSize = 256;
     vadSrc.connect(vadAnalyser);
@@ -1143,38 +1139,35 @@ async function joinVoiceChat(id) {
     let silenceCounter = 0;
 
     vadInterval = setInterval(() => {
-        if (!localStream) return;
+        if (!localStream || !currentVoiceChatId) {
+            vadStream.getTracks().forEach(t => t.stop());
+            return;
+        }
 
         vadAnalyser.getByteFrequencyData(vadData);
         let sum = 0;
         for (let i = 0; i < vadData.length; i++) sum += vadData[i];
         const avg = sum / vadData.length;
 
-        // "localMutes" logic handles manual mute button. 
-        // We only apply Gate if NOT manually muted.
         const manualMute = localMutes[myUid + '_Mic'];
 
         if (!manualMute) {
             if (avg > micSensitivity) {
-                // Open Gate
                 localStream.getAudioTracks().forEach(t => t.enabled = true);
                 silenceCounter = 0;
             } else {
-                // Close Gate (with small hysteresis/delay to not cut off ends of words)
                 silenceCounter++;
-                if (silenceCounter > 5) { // ~250ms of silence required to close gate
+                if (silenceCounter > 5) {
                     localStream.getAudioTracks().forEach(t => t.enabled = false);
                 }
             }
         }
     }, 50);
 
-    // Database Presence
     voicePresenceRef = db.ref(`voice_chats/${id}/users/${myUid}`);
     await voicePresenceRef.onDisconnect().remove();
     await voicePresenceRef.set({ nick: getVoiceNick(), joinedAt: Date.now() });
 
-    // Signaling
     voiceSignalingRef = db.ref(`voice_signaling/${id}/${myUid}`);
     voiceSignalingRef.on('child_added', async (snap) => {
         const msg = snap.val(); if (!msg) return;
@@ -1182,17 +1175,13 @@ async function joinVoiceChat(id) {
         await handleSignalingMessage(msg);
     });
 
-    // Local Visualizer (Green border)
     try {
-        // Clone for visualizer so it works even when Gate is closed
         const myClone = localStream.clone();
-        // Force track enabled on clone so visualizer always sees input
         myClone.getAudioTracks()[0].enabled = true;
         visualizerStreams['local'] = myClone;
         attachSpeakingVisualizer(myClone, myUid);
     } catch (e) { }
 
-    // Connect to peers
     db.ref(`voice_chats/${id}/users`).once('value').then(snapshot => {
         const users = snapshot.val();
         if (users) {
@@ -1200,9 +1189,12 @@ async function joinVoiceChat(id) {
             others.forEach(targetUid => initiateCall(targetUid));
         }
     });
+
+    startPingMonitor(id);
 }
 
 function leaveVoiceChat(wasKicked = false) {
+    if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
     if (vadInterval) { clearInterval(vadInterval); vadInterval = null; }
     if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
     Object.values(visualizerStreams).forEach(s => s.getTracks().forEach(t => t.stop())); visualizerStreams = {};
@@ -1211,6 +1203,10 @@ function leaveVoiceChat(wasKicked = false) {
     const c = document.getElementById('webrtc-audio-container'); if (c) c.innerHTML = '';
     if (voicePresenceRef) { if (!wasKicked) audioDisconnect.play().catch(() => { }); voicePresenceRef.remove(); voicePresenceRef.onDisconnect().cancel(); voicePresenceRef = null; }
     if (voiceSignalingRef) { voiceSignalingRef.off(); voiceSignalingRef.remove(); voiceSignalingRef = null; }
+
+    const prevPingEl = document.getElementById(`ping-${currentVoiceChatId}`);
+    if (prevPingEl) prevPingEl.textContent = '';
+
     currentVoiceChatId = null;
     renderServerList();
     if (wasKicked) showAlert("You were kicked.");
@@ -1490,30 +1486,26 @@ function openSignupModal() {
 }
 
 async function openVoiceSettingsModal(channelId = null) {
-    // Stop current test context if running
     if (testAudioContext) { testAudioContext.close(); testAudioContext = null; }
     if (testStream) { testStream.getTracks().forEach(t => t.stop()); testStream = null; }
 
-    let tempMicId = currentMicId; // Tymczasowe przechowywanie wyboru
+    let tempMicId = currentMicId;
 
     showModal(`
         <h4>VOICE SETTINGS</h4>
-        
         <div class="row">
             <label>Input Device</label>
             <select id="micSelect" style="width:100%; padding:8px; background:#111; color:white; border:1px solid #333; border-radius:4px;"></select>
         </div>
-
         <div class="row" style="margin-top:15px;">
             <label>Input Sensitivity (Noise Gate)</label>
             <div style="display:flex; justify-content:space-between; font-size:12px; opacity:0.7;">
-                <span>Sensitive (Hear everything)</span>
-                <span>Strict (Block keyboard)</span>
+                <span>Sensitive</span>
+                <span>Strict</span>
             </div>
             <input type="range" id="sensSlider" class="range-slider" min="0" max="50" value="${micSensitivity}">
             <div style="font-size:12px; margin-top:4px;">Current Threshold: <span id="sensVal">${micSensitivity}</span></div>
         </div>
-
         <div class="row" style="margin-top:10px;">
             <label>Mic Test</label>
             <div class="mic-test-bar-container">
@@ -1521,18 +1513,15 @@ async function openVoiceSettingsModal(channelId = null) {
             </div>
             <div id="testText" style="font-size:12px; opacity:0.5; margin-top:4px;">Say something...</div>
         </div>
-
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">
             <button id="saveSettings" class="btn btn-primary">Done</button>
         </div>
     `);
 
-    // 1. Populate Devices
     const sel = document.getElementById('micSelect');
     try {
         const devices = await navigator.mediaDevices.enumerateDevices();
         const audioInputs = devices.filter(d => d.kind === 'audioinput');
-
         sel.innerHTML = '';
         audioInputs.forEach(d => {
             const opt = document.createElement('option');
@@ -1541,8 +1530,6 @@ async function openVoiceSettingsModal(channelId = null) {
             if (d.deviceId === currentMicId) opt.selected = true;
             sel.appendChild(opt);
         });
-
-        // Handler zmiany w liście - TYLKO aktualizuje test bar, nie rozłącza czatu!
         sel.onchange = () => {
             tempMicId = sel.value;
             localStorage.setItem('konsmon_mic_id', tempMicId);
@@ -1552,7 +1539,6 @@ async function openVoiceSettingsModal(channelId = null) {
         sel.innerHTML = '<option>Error loading devices</option>';
     }
 
-    // 2. Sensitivity Slider
     const slider = document.getElementById('sensSlider');
     const valDisplay = document.getElementById('sensVal');
     slider.oninput = () => {
@@ -1561,26 +1547,62 @@ async function openVoiceSettingsModal(channelId = null) {
         localStorage.setItem('konsmon_mic_sens', micSensitivity);
     };
 
-    // 3. Start Test Loop
     startMicTest(currentMicId);
 
-    // 4. Save & Close Handler - Tutaj następuje faktyczna zmiana mikrofonu w czacie
     document.getElementById('saveSettings').onclick = () => {
-        // Czyścimy testy
         if (testAudioContext) { testAudioContext.close(); testAudioContext = null; }
         if (testStream) { testStream.getTracks().forEach(t => t.stop()); testStream = null; }
-
         closeModal();
 
-        // Jeśli zmieniliśmy mikrofon I jesteśmy połączeni - przeładuj połączenie
-        if (tempMicId !== currentMicId || (currentVoiceChatId && currentMicId)) {
-            currentMicId = tempMicId; // Zatwierdź ID
+        if (tempMicId !== currentMicId) {
+            currentMicId = tempMicId;
             if (currentVoiceChatId) {
-                // Małe opóźnienie dla pewności, że modal i strumienie testowe są czyste
                 setTimeout(() => joinVoiceChat(currentVoiceChatId), 200);
             }
         }
     };
+}
+
+function startPingMonitor(channelId) {
+    if (pingInterval) clearInterval(pingInterval);
+
+    pingInterval = setInterval(async () => {
+        const el = document.getElementById(`ping-${channelId}`);
+        if (!el || !peers || Object.keys(peers).length === 0) {
+            if (el) el.textContent = '';
+            return;
+        }
+
+        let totalRtt = 0;
+        let count = 0;
+
+        const promises = Object.values(peers).map(pc => pc.getStats(null));
+        const reports = await Promise.all(promises);
+
+        reports.forEach(stats => {
+            stats.forEach(report => {
+                if (report.type === 'candidate-pair' && report.state === 'succeeded' && report.currentRoundTripTime) {
+                    totalRtt += report.currentRoundTripTime;
+                    count++;
+                }
+            });
+        });
+
+        if (count > 0) {
+            const avgMs = Math.round((totalRtt / count) * 1000);
+            el.textContent = `ping: ${avgMs}ms`;
+
+            if (avgMs < 50) {
+                el.style.color = '#22c55e';
+            } else if (avgMs < 100) {
+                el.style.color = '#f97316';
+            } else {
+                el.style.color = '#ef4444';
+            }
+        } else {
+            el.textContent = '';
+        }
+    }, 2000);
 }
 
 // Helper for the modal test bar
