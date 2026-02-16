@@ -38,31 +38,25 @@
 
     <div class="app">
         <div class="sidebar">
-            <h2 style="margin-bottom: 4px;">VOICE CHATS: </h2>
-            <div id="voiceChatList" class="chat-list" style="flex: 0 0 auto; max-height: 40%; margin-bottom: 10px;"></div>
+            <h2 style="margin: 4px 0 10px 6px; font-size: 15px;">SERVER LIST:</h2>
 
-            <hr style="border: 0; border-top: 1px solid var(--muted); margin: 0 6px 10px 6px;">
+            <div id="serverList" class="chat-list">Loading...</div>
 
-            <h2 style="margin-top: 0;">TEXT CHATS: </h2>
-            <div id="chatList" class="chat-list">Loading...</div>
             <div class="sidebar-footer">
-                <button id="btnCreate" class="btn btn-primary">Create new</button>
+                <button id="btnCreate" class="btn btn-primary">Create Server</button>
                 <button id="btnRefresh" class="btn btn-ghost">Refresh</button>
             </div>
         </div>
-
         <div class="main">
             <div class="panel" id="mainPanel">
-
                 <div id="welcomeArea" style="width: 100%; display: flex; flex-direction: column; align-items: center; overflow-y: auto;">
-
                     <h1 style="font-size: 4rem; margin: 20px 0 40px 0; color: var(--text); letter-spacing: 4px; text-align: center;">☢ KONSMON ☢</h1>
 
                     <div class="welcome" style="margin: 0 auto 20px auto;">
                         <h3>Choose a chat or create new one</h3>
                         <p>Create a chat (name + password) or join an existing one by clicking it from the list on the left.</p>
                         <div class="inputs">
-                            <button id="createQuick" class="btn btn-primary">Create new chat</button>
+                            <button id="createQuick" class="btn btn-primary">Create new server</button>
                             <div style="align-self:center">— or —</div>
                             <div style="display:flex;gap:6px;align-items:center">
                                 <input id="searchInput" placeholder="Search..." />
@@ -81,7 +75,6 @@
                         <img src="gfx/eye.png" alt="Konsmon Art"
                              style="display: block; margin-top: 1px; max-width: 100%; height: auto; border-radius: 4px; opacity: 0.9;">
                     </div>
-
                 </div>
 
                 <div id="chatArea" style="display:none;flex-direction:column;height:100%">
