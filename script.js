@@ -1647,7 +1647,7 @@ function startPingMonitor(channelId) {
 
             if (count > 0) {
                 const avgMs = Math.round((totalRtt / count) * 1000);
-                el.textContent = `ping: ${avgMs}ms`;
+                el.textContent = `current ping: ${avgMs}ms`;
 
                 if (avgMs < 50) {
                     el.style.color = '#22c55e'; // Zielony
