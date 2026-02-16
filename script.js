@@ -1090,17 +1090,15 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal()
 
 // --- WEBRTC VOICE ---
 const rtcConfig = {
+    // Ważne: iceTransportPolicy: 'all' pozwala używać wszystkiego (P2P i Relay)
+    iceTransportPolicy: 'all',
+    iceCandidatePoolSize: 10,
     iceServers: [
-        // Standardowe serwery STUN Google (rozszerzona lista)
+        // 1. Standardowe STUN Google (dla normalnych sieci)
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun3.l.google.com:19302' },
-        { urls: 'stun:stun4.l.google.com:19302' },
 
-        // Darmowy serwer TURN z projektu OpenRelay (pozwala ominąć trudne routery)
-        // UWAGA: To jest serwer publiczny, używaj go tylko do testów/małych projektów.
-        // Jeśli przestanie działać, będziesz musiał założyć darmowe konto np. na metered.ca
+        // 2. TURN UDP (szybki przekaźnik)
         {
             urls: "turn:openrelay.metered.ca:80",
             username: "openrelayproject",
@@ -1111,14 +1109,15 @@ const rtcConfig = {
             username: "openrelayproject",
             credential: "openrelayproject"
         },
+
+        // 3. TURN TCP (wolniejszy, ale przechodzi przez prawie każdy firewall)
+        // To jest kluczowe dla Twojego kolegi!
         {
             urls: "turn:openrelay.metered.ca:443?transport=tcp",
             username: "openrelayproject",
             credential: "openrelayproject"
         }
-    ],
-    iceTransportPolicy: 'all',
-    iceCandidatePoolSize: 10
+    ]
 };
 const audioConnect = new Audio('./audio/con.mp3');
 const audioDisconnect = new Audio('./audio/discon.mp3');
