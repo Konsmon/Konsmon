@@ -398,7 +398,7 @@ function renderServerList(filter) {
         if (isExpanded || filter) {
             const txtCat = document.createElement('div');
             txtCat.className = 'tree-item tree-category indent-1';
-            txtCat.innerHTML = `<span class="tree-prefix">|_</span>TEXT CHATS <span class="add-channel-btn" title="Create Text Channel" onclick="openChannelCreateModal('${serverId}', 'text')">+</span>`;
+            txtCat.innerHTML = `<span class="tree-prefix"></span>TEXT CHATS: <span class="add-channel-btn" title="Create Text Channel" onclick="openChannelCreateModal('${serverId}', 'text')">+</span>`;
             listEl.appendChild(txtCat);
 
             if (server.channels && server.channels.text) {
@@ -422,7 +422,7 @@ function renderServerList(filter) {
 
             const voiceCat = document.createElement('div');
             voiceCat.className = 'tree-item tree-category indent-1';
-            voiceCat.innerHTML = `<span class="tree-prefix">|_</span>VOICE CHATS <span class="add-channel-btn" title="Create Voice Channel" onclick="openChannelCreateModal('${serverId}', 'voice')">+</span>`;
+            voiceCat.innerHTML = `<span class="tree-prefix"></span>VOICE CHATS: <span class="add-channel-btn" title="Create Voice Channel" onclick="openChannelCreateModal('${serverId}', 'voice')">+</span>`;
             listEl.appendChild(voiceCat);
 
             if (server.channels && server.channels.voice) {
