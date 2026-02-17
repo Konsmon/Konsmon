@@ -1,0 +1,36 @@
+body {
+    background-color: #0f1112; /* Twój kolor t³a */
+    color: white; /* Bia³y tekst */
+    font-family: sans-serif, Arial; /* Prosta czcionka */
+    margin: 0;
+    padding: 0;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 800px;
+    margin: 50px auto; /* Wyœrodkowanie treœci */
+    padding: 20px;
+}
+
+h1 {
+    color: #0ea5ff;
+    border-bottom: 1px solid #333;
+    padding-bottom: 10px;
+}
+
+a {
+    color: #3b82f6; /* Niebieski kolor linków */
+    text-decoration: none;
+}
+
+    a:hover {
+        text-decoration: underline;
+    }
+
+.back-link {
+    display: inline-block;
+    margin-top: 20px;
+    font-size: 0.9em;
+    opacity: 0.8;
+}
