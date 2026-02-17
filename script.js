@@ -289,24 +289,15 @@ function addPingsForUsers(chatId, userIds, senderNick, senderUid) {
     });
 }
 
-// --- SERVER AUTHENTICATION HELPER ---
 
 function checkServerAccess(serverId, callback) {
     const server = serversCache[serverId];
     if (!server) return;
 
-    // 1. Warunki, kiedy wpuszczamy BEZ hasła:
-    // - brak hasła
-    // - serwer jest już odblokowany w tej sesji (unlockedServers)
-    // - jestem właścicielem serwera
-    // - jestem globalnym adminem (adminPassword)
     const isOwner = currentUser && server.ownerId === currentUser.uid;
     const isUnlocked = unlockedServers.has(serverId);
     const hasNoPass = !server.password || server.password === '';
 
-    // Sprawdzenie czy user wpisał globalne hasło admina przy wejściu (jeśli masz taką logikę)
-    // lub czy po prostu zna hasło globalne.
-    // Zakładam prostsze sprawdzenie:
 
     if (hasNoPass || isUnlocked || isOwner) {
         callback();
@@ -329,11 +320,11 @@ function checkServerAccess(serverId, callback) {
     document.getElementById('confirmServerAuth').onclick = () => {
         const val = String(document.getElementById('serverPassInput').value || '');
 
-        // Sprawdzamy hasło serwera LUB hasło globalnego admina
+
         if (val === server.password || (adminPassword && val === adminPassword)) {
-            unlockedServers.add(serverId); // Zapamiętaj, że odblokowano
+            unlockedServers.add(serverId); 
             closeModal();
-            callback(); // Wykonaj wejście na kanał
+            callback(); 
         } else {
             showAlert("Wrong password!");
         }
@@ -341,9 +332,7 @@ function checkServerAccess(serverId, callback) {
 }
 
 
-// --- RENDER TREE SYSTEM (NEW) ---
 
-// Listeners
 chatsRef.on('value', snap => {
     chatsCache = snap.val() || {};
     renderServerList();
@@ -377,19 +366,19 @@ function renderServerList(filter) {
     );
 
     filtered.forEach(([serverId, server]) => {
-        // ZMIANA: Sprawdzamy czy serwer jest w zbiorze otwartych
+ 
         const isExpanded = expandedServers.has(serverId);
 
         const serverDiv = document.createElement('div');
         serverDiv.className = 'tree-item tree-server';
-        // Opcjonalnie: jeśli chcesz, aby nagłówek serwera też się świecił gdy jest rozwinięty:
+
         if (isExpanded) serverDiv.classList.add('active');
 
         const arrow = isExpanded ? '▼' : '▶';
         serverDiv.innerHTML = `<span class="tree-prefix" style="font-size:10px; vertical-align:middle; margin-right:6px;">${arrow}</span>${escapeHtml(server.name)}`;
 
         serverDiv.onclick = () => {
-            // ZMIANA: Logika wielokrotnego rozwijania (Set)
+
             if (expandedServers.has(serverId)) {
                 expandedServers.delete(serverId);
             } else {
@@ -409,19 +398,19 @@ function renderServerList(filter) {
                 Object.entries(server.channels.text).forEach(([channelId, channelData]) => {
                     const chanDiv = document.createElement('div');
                     chanDiv.className = 'tree-item tree-channel indent-2';
-                    // ZMIANA: Sprawdzamy currentChatId bezpośrednio dla podświetlenia
+                   
                     if (currentChatId === channelId) chanDiv.classList.add('active');
                     chanDiv.innerHTML = `<span class="tree-prefix">|_</span><span style="opacity:0.7">#</span> ${escapeHtml(channelData.name)}`;
 
                     chanDiv.onclick = () => {
                         checkServerAccess(serverId, () => {
-                            // ZMIANA: Ustawiamy ID natychmiast przed renderowaniem
+                          
                             currentChatId = channelId;
                             currentChannelId = channelId;
                             currentChannelType = 'text';
 
-                            renderServerList(); // Odśwież widok (teraz podświetli od razu)
-                            joinChat(channelId); // Dołącz do logiki
+                            renderServerList(); 
+                            joinChat(channelId); 
                         });
                     };
                     listEl.appendChild(chanDiv);
@@ -457,6 +446,9 @@ function renderServerList(filter) {
                             openVoiceSettingsModal(channelId);
                             return;
                         }
+                        
+                        if (currentVoiceChatId === channelId) return;
+
                         checkServerAccess(serverId, () => {
                             currentChannelId = channelId;
                             currentChannelType = 'voice';
@@ -522,9 +514,14 @@ function renderVoiceUserInTree(container, channelId, uid, uData) {
 
     const myUid = getVoiceUid();
     const isMe = (uid === myUid);
-    const isAdmin = currentUser && usersCacheById[currentUser.uid] && usersCacheById[currentUser.uid].admin === 1;
+    const amIAdmin = currentUser && usersCacheById[currentUser.uid] && usersCacheById[currentUser.uid].admin === 1;
 
-    let html = `<span class="tree-prefix">|_</span> <span id="voice-nick-${uid}" class="tree-user-nick">${escapeHtml(uData.nick)}</span>`;
+    let displayNick = uData.nick;
+    if (usersCacheById[uid] && usersCacheById[uid].admin === 1) {
+        displayNick += ' [ADMIN]';
+    }
+
+    let html = `<span class="tree-prefix">|_</span> <span id="voice-nick-${uid}" class="tree-user-nick">${escapeHtml(displayNick)}</span>`;
 
     const controls = document.createElement('span');
     controls.className = 'tree-controls';
@@ -537,10 +534,9 @@ function renderVoiceUserInTree(container, channelId, uid, uData) {
 
         const stateKey = uid + '_' + type;
 
-        // Wizualne zaznaczenie (czerwony filtr), jeśli wyciszone
         if (localMutes[stateKey]) {
-            btn.style.filter = 'none'; // Usuwamy stary filtr
-            btn.style.background = 'rgba(255, 0, 0, 1)'; // Czerwone tło
+            btn.style.filter = 'none';
+            btn.style.background = 'rgba(255, 0, 0, 1)';
             btn.style.color = 'white';
             btn.style.borderRadius = '4px';
         } else {
@@ -551,62 +547,46 @@ function renderVoiceUserInTree(container, channelId, uid, uData) {
         btn.onclick = (e) => {
             e.stopPropagation();
 
-            if (!isMe && !isAdmin && type === 'Mic') {
+            if (!isMe && !amIAdmin && type === 'Mic') {
                 showAlert("Only admins can mute other users.");
                 return;
             }
 
-            // 1. Przełącz stan klikniętego przycisku
             localMutes[stateKey] = !localMutes[stateKey];
             const isNowMuted = localMutes[stateKey];
 
-            // Dźwięk systemowy
             if (isNowMuted) audioMute.play().catch(() => { });
             else audioUnmute.play().catch(() => { });
 
-            // --- LOGIKA POWIĄZANIA SŁUCHAWEK Z MIKROFONEM ---
-
-            // A. Jeśli kliknięto Słuchawki (Headphones) i właśnie je WYCISZONO -> Wycisz też Mikrofon
             if (type === 'Headphones' && isNowMuted) {
                 localMutes[uid + '_Mic'] = true;
             }
 
-            // B. (Opcjonalnie) Jeśli kliknięto Mikrofon i próbujemy go ODCISZYĆ, ale Słuchawki są wyciszone -> Odsłuchaj też słuchawki (żeby było logicznie)
             if (type === 'Mic' && !isNowMuted && localMutes[uid + '_Headphones']) {
                 localMutes[uid + '_Headphones'] = false;
             }
-            // ----------------------------------------------------
 
-            // Aplikowanie zmian logicznych (WebRTC / HTML Audio)
-
-            // Obsługa Mikrofonu
             const micKey = uid + '_Mic';
             const micMuted = localMutes[micKey];
 
             if (isMe && localStream) {
                 localStream.getAudioTracks().forEach(t => t.enabled = !micMuted);
             }
-            // (Dla innych użytkowników ikona mikrofonu jest tylko wizualna, chyba że jesteś adminem, ale WebRTC nie pozwala łatwo wyciszyć zdalnego mikrofonu u źródła, więc tutaj to głównie wizualne dla admina + lokalne wyciszenie audio)
+
             const remoteAudio = document.getElementById('audio-' + uid);
             if (remoteAudio && type === 'Mic') remoteAudio.muted = micMuted;
 
-
-            // Obsługa Słuchawek (Deafen)
             const phoneKey = uid + '_Headphones';
             const phoneMuted = localMutes[phoneKey];
 
             if (type === 'Headphones' || (type === 'Mic' && !isNowMuted)) {
                 if (isMe) {
-                    // Wyciszamy wszystkich u siebie
                     document.querySelectorAll('#webrtc-audio-container audio').forEach(a => a.muted = phoneMuted);
                 } else {
-                    // Wyciszamy konkretnego użytkownika u siebie
                     const remAudio = document.getElementById('audio-' + uid);
                     if (remAudio) remAudio.muted = phoneMuted;
                 }
             }
-
-            // Przeładuj listę, aby zaktualizować kolory obu ikon (bo mogły się zmienić obie na raz)
             renderServerList();
         };
         return btn;
@@ -627,7 +607,7 @@ function renderVoiceUserInTree(container, channelId, uid, uData) {
         actionBtn.title = 'Leave Voice';
         actionBtn.style.color = '#ef4444';
         actionBtn.onclick = (e) => { e.stopPropagation(); leaveVoiceChat(); };
-    } else if (isAdmin) {
+    } else if (amIAdmin) {
         actionBtn.innerHTML = '❌';
         actionBtn.title = 'Kick User';
         actionBtn.style.color = '#ef4444';
@@ -755,8 +735,7 @@ function attemptJoin(id, skipPrompt = false) {
 }
 
 function attemptJoinVoice(id) {
-    // Tutaj normalnie byłoby sprawdzanie hasła, ale w strukturze serwerów
-    // hasło jest na wejściu do serwera, więc wchodzimy od razu.
+
     joinVoiceChat(id);
 }
 
@@ -807,7 +786,13 @@ function joinChat(id) {
             : (m.time ? String(m.time).split(' ').pop() : '');
 
         const meta = document.createElement('div'); meta.className = 'meta-line';
-        meta.textContent = `[${timeStr}] ${m.nickname || 'Anon'}`;
+
+        let displayNick = m.nickname || 'Anon';
+        if (m.userId && usersCacheById[m.userId] && usersCacheById[m.userId].admin === 1) {
+            displayNick += ' [ADMIN]';
+        }
+
+        meta.textContent = `[${timeStr}] ${displayNick}`;
 
         const msgDate = new Date(m.createdAt || Date.now());
         const dateOnly = msgDate.toLocaleDateString();
@@ -894,14 +879,13 @@ function joinChat(id) {
 leaveBtn.onclick = () => { if (!currentChatId) return; if (!showAlert('Leave chat?')) return; detachChat(); }
 function detachChat() { if (messagesRef) messagesRef.off(); currentChatId = null; currentChatRef = null; messagesEl.innerHTML = ''; chatArea.style.display = 'none'; welcomeArea.style.display = 'block'; chatTitle.textContent = '—'; chatSubtitle.textContent = '—'; }
 
-// Delete chat
-// Delete chat / channel logic
+
 deleteBtn.onclick = () => {
-    // Sprawdzamy czy cokolwiek jest wybrane
+
     const targetId = currentChatId || currentChannelId;
     if (!targetId) return;
 
-    // Ustalamy nazwę do wyświetlenia w modalu
+
     let chatName = 'Chat';
     let isServerChannel = false;
     let parentServer = null;
@@ -909,7 +893,7 @@ deleteBtn.onclick = () => {
     if (currentServerId && serversCache[currentServerId]) {
         parentServer = serversCache[currentServerId];
         isServerChannel = true;
-        // Próba znalezienia nazwy
+
         if (currentChannelType === 'text' && parentServer.channels.text?.[targetId]) {
             chatName = parentServer.channels.text[targetId].name;
         } else if (currentChannelType === 'voice' && parentServer.channels.voice?.[targetId]) {
@@ -935,16 +919,15 @@ deleteBtn.onclick = () => {
     document.getElementById('confirmDelete').onclick = () => {
         const enteredPass = String(document.getElementById('deletePassInput').value || '');
 
-        // 1. Sprawdzenie hasła globalnego ADMINA
+
         const isGlobalAdmin = (adminPassword && enteredPass === adminPassword);
 
-        // 2. Sprawdzenie hasła usuwania SERWERA (jeśli to kanał w serwerze)
+
         let isServerAdmin = false;
         if (parentServer && parentServer.deletePassword && enteredPass === parentServer.deletePassword) {
             isServerAdmin = true;
         }
 
-        // 3. Sprawdzenie hasła usuwania STAREGO CZATU (flat structure)
         let isOldChatAdmin = false;
         const oldChat = chatsCache[targetId];
         if (oldChat && oldChat.deletePassword && enteredPass === oldChat.deletePassword) {
@@ -952,20 +935,19 @@ deleteBtn.onclick = () => {
         }
 
         if (isGlobalAdmin || isServerAdmin || isOldChatAdmin) {
-            // Wykonaj usuwanie
+
             const updates = {};
 
-            // A. Jeśli to kanał w serwerze, usuń go z listy kanałów serwera
             if (isServerChannel && currentServerId && currentChannelType) {
                 updates[`servers/${currentServerId}/channels/${currentChannelType}/${targetId}`] = null;
             } else {
-                // To stary czat z głównej listy
+
                 updates[`chats/${targetId}`] = null;
             }
 
-            // B. Zawsze usuń historię wiadomości (dla text) i pings
-            updates[`chats/${targetId}`] = null; // To usuwa wiadomości
-            // C. Jeśli to głosowy, usuń dane sesji voice
+
+            updates[`chats/${targetId}`] = null; 
+
             if (currentChannelType === 'voice') {
                 updates[`voice_chats/${targetId}`] = null;
                 updates[`voice_signaling/${targetId}`] = null;
@@ -1088,17 +1070,15 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal()
 })();
 
 
-// --- WEBRTC VOICE ---
 const rtcConfig = {
-    // Ważne: iceTransportPolicy: 'all' pozwala używać wszystkiego (P2P i Relay)
+
     iceTransportPolicy: 'all',
     iceCandidatePoolSize: 10,
     iceServers: [
-        // 1. Standardowe STUN Google (dla normalnych sieci)
+
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
 
-        // 2. TURN UDP (szybki przekaźnik)
         {
             urls: "turn:openrelay.metered.ca:80",
             username: "openrelayproject",
@@ -1110,8 +1090,6 @@ const rtcConfig = {
             credential: "openrelayproject"
         },
 
-        // 3. TURN TCP (wolniejszy, ale przechodzi przez prawie każdy firewall)
-        // To jest kluczowe dla Twojego kolegi!
         {
             urls: "turn:openrelay.metered.ca:443?transport=tcp",
             username: "openrelayproject",
@@ -1650,16 +1628,13 @@ function startPingMonitor(channelId) {
                 el.textContent = `current ping: ${avgMs}ms`;
 
                 if (avgMs < 50) {
-                    el.style.color = '#22c55e'; // Zielony
+                    el.style.color = '#22c55e';
                 } else if (avgMs < 100) {
-                    el.style.color = '#f97316'; // Pomarańczowy
+                    el.style.color = '#f97316'; 
                 } else {
-                    el.style.color = '#ef4444'; // Czerwony
+                    el.style.color = '#ef4444'; 
                 }
             }
-            // WAŻNE: Usunąłem sekcję "else", która czyściła tekst.
-            // Dzięki temu, jeśli przez chwilę brakuje danych (cisza),
-            // na ekranie zostaje ostatni znany wynik.
 
         } catch (err) {
             console.warn("Ping monitor error:", err);
@@ -1667,7 +1642,7 @@ function startPingMonitor(channelId) {
     }, 1000);
 }
 
-// --- GLOBAL CONTROLS (MUTE/DEAFEN) ---
+
 let globalMicMuted = false;
 let globalSoundMuted = false;
 
@@ -1733,6 +1708,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (bSignin) bSignin.onclick = openLoginModal;
     if (bSignup) bSignup.onclick = openSignupModal;
     if (bRefresh) bRefresh.onclick = () => renderServerList();
-    const logo = document.getElementById('siteLogo'); if (logo) logo.onclick = () => location.reload();
+    const logo = document.getElementById('siteLogo');
+    if (logo) logo.onclick = () => {
+        detachChat();
+    };
 });
 if (document.readyState === 'complete' || document.readyState === 'interactive') document.dispatchEvent(new Event('DOMContentLoaded'));
