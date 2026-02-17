@@ -398,19 +398,21 @@ function renderServerList(filter) {
                 Object.entries(server.channels.text).forEach(([channelId, channelData]) => {
                     const chanDiv = document.createElement('div');
                     chanDiv.className = 'tree-item tree-channel indent-2';
-                   
+
                     if (currentChatId === channelId) chanDiv.classList.add('active');
                     chanDiv.innerHTML = `<span class="tree-prefix">|_</span><span style="opacity:0.7">#</span> ${escapeHtml(channelData.name)}`;
 
-                    chanDiv.onclick = () => {
+                    chanDiv.onclick = (e) => {
+                        if (e.target.classList.contains('settings-icon')) {
+                            openVoiceSettingsModal(channelId);
+                            return;
+                        }
+
                         checkServerAccess(serverId, () => {
-                          
-                            currentChatId = channelId;
                             currentChannelId = channelId;
                             currentChannelType = 'text';
-
-                            renderServerList(); 
-                            joinChat(channelId); 
+                            renderServerList();
+                            joinChat(channelId);
                         });
                     };
                     listEl.appendChild(chanDiv);
@@ -531,12 +533,24 @@ function renderVoiceUserInTree(container, channelId, uid, uData) {
     const controls = document.createElement('span');
     controls.className = 'tree-controls';
 
+    // ... (wewnątrz renderVoiceUserInTree, zaraz pod controls)
+
+    // Obsługa kliknięcia w nick - OGLĄDANIE STREAMU
     userRow.onclick = (e) => {
-        if (!isMe && isStreaming) {
+        // ZMIANA: Pozwalamy kliknąć w kogoś kto streamuje LUB w siebie jeśli streamujemy
+        if ((!isMe && isStreaming) || (isMe && localScreenStream)) {
             e.stopPropagation();
-            viewUserStream(uid);
+            viewUserStream(uid, isMe);
         }
     };
+
+    // ZMIANA: Kursor wskazujący aktywność
+    if ((!isMe && isStreaming) || (isMe && localScreenStream)) {
+        userRow.style.cursor = 'pointer';
+        userRow.title = 'Click to watch stream';
+    }
+
+    // ... (dalej funkcja createIcon bez zmian)
 
 
     if (!isMe && isStreaming) {
