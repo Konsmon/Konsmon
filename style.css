@@ -49,6 +49,7 @@ html, body {
         font-size: 15px;
     }
 
+
 .chat-list {
     flex: 1;
     overflow: auto;
@@ -750,3 +751,44 @@ body.sidebar-open .sidebar {
     margin-top: 5px;
     cursor: pointer;
 }
+
+/* Styl dla ikonek w drzewie użytkowników (Mic/Headphones) */
+.t-icon {
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+    /* Kiedy najeżdżasz myszką */
+    .t-icon:hover {
+        background: rgba(255, 255, 255, 0.1);
+        opacity: 1;
+        transform: none; /* Reset poprzedniego powiększenia, bo mamy tło */
+    }
+
+/* Styl dla przycisków w nowym panelu dolnym */
+.btn-icon-control {
+    background: transparent;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: 0.2s;
+}
+
+    .btn-icon-control:hover {
+        background: rgba(255,255,255,0.1);
+    }
+
+    /* To sprawia, że przycisk w dolnym panelu świeci na czerwono, gdy jest aktywny (mute) */
+    .btn-icon-control.active {
+        background: rgba(255, 0, 0, 0.2); /* Czerwone tło (delikatne) */
+        color: #ef4444 !important; /* Czerwona ikona */
+        box-shadow: inset 0 0 0 1px #ef4444; /* Czerwona ramka */
+    }
+
+/* Dodatkowo: Jeśli chcesz, aby ikonki przy nickach (drzewko) też miały czerwone tło, gdy są wyciszone */
+/* Musisz w JS dodawać klasę .muted-icon, ale Twój obecny kod używa 'filter'. */
+/* Aby wymusić czerwone tło po kliknięciu na ikonkę w drzewie (gdy jest wyciszona): */
