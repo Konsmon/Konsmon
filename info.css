@@ -1,6 +1,6 @@
 body {
-    background-color: #0f1112; /* Twój kolor t³a */
-    color: white; /* Bia³y tekst */
+    background-color: #0f1112; /* Twï¿½j kolor tï¿½a */
+    color: white; /* Biaï¿½y tekst */
     font-family: sans-serif, Arial; /* Prosta czcionka */
     margin: 0;
     padding: 0;
@@ -9,7 +9,7 @@ body {
 
 .container {
     max-width: 800px;
-    margin: 50px auto; /* Wyœrodkowanie treœci */
+    margin: 50px auto; /* Wyï¿½rodkowanie treï¿½ci */
     padding: 20px;
 }
 
@@ -20,7 +20,7 @@ h1 {
 }
 
 a {
-    color: #3b82f6; /* Niebieski kolor linków */
+    color: #3b82f6; /* Niebieski kolor linkï¿½w */
     text-decoration: none;
 }
 
