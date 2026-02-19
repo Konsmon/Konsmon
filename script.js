@@ -26,6 +26,10 @@ db.ref('admin/password').once('value').then(snap => {
     console.error('Error, admin password was not found', err);
 });
 
+function isCurrentUserAdmin() {
+    return !!(currentUser && usersCacheById[currentUser.uid] && usersCacheById[currentUser.uid].admin === 1);
+}
+
 // UI refs
 const btnCreate = document.getElementById('btnCreate');
 const btnRefresh = document.getElementById('btnRefresh');
@@ -73,6 +77,7 @@ let serversCache = {}; // Stores the entire server tree
 
 // Track where the user is
 let expandedServers = new Set();
+let currentServerId = null;
 let currentChannelId = null;
 let currentChannelType = null; // 'text' or 'voice'
 
@@ -295,11 +300,12 @@ function checkServerAccess(serverId, callback) {
     if (!server) return;
 
     const isOwner = currentUser && server.ownerId === currentUser.uid;
+    const isAccountAdmin = isCurrentUserAdmin();
     const isUnlocked = unlockedServers.has(serverId);
     const hasNoPass = !server.password || server.password === '';
 
 
-    if (hasNoPass || isUnlocked || isOwner) {
+    if (hasNoPass || isUnlocked || isOwner || isAccountAdmin) {
         callback();
         return;
     }
@@ -386,13 +392,14 @@ function renderServerList(filter) {
         serverDiv.className = 'tree-item tree-server';
 
         if (isExpanded) serverDiv.classList.add('active');
+        if (currentServerId === serverId) serverDiv.classList.add('selected');
 
         const arrow = isExpanded ? '▼' : '▶';
         const serverHasPing = !!(server.channels && server.channels.text && Object.keys(server.channels.text).some(cid => pingedChats.has(cid)));
         serverDiv.innerHTML = `<span class="tree-prefix" style="font-size:10px; vertical-align:middle; margin-right:6px;">${arrow}</span>${escapeHtml(server.name)}${serverHasPing ? '<span class="ping-dot" title="Mention"></span>' : ''}`;
 
         serverDiv.onclick = () => {
-
+            currentServerId = serverId;
             if (expandedServers.has(serverId)) {
                 expandedServers.delete(serverId);
             } else {
@@ -424,8 +431,11 @@ function renderServerList(filter) {
                         }
 
                         checkServerAccess(serverId, () => {
+                            currentServerId = serverId;
+                            expandedServers.add(serverId);
                             currentChannelId = channelId;
                             currentChannelType = 'text';
+                            currentChatId = channelId;
                             renderServerList();
                             joinChat(channelId);
                         });
@@ -997,6 +1007,7 @@ deleteBtn.onclick = () => {
 
 
         const isGlobalAdmin = (adminPassword && enteredPass === adminPassword);
+        const isAccountAdmin = isCurrentUserAdmin();
 
 
         let isServerAdmin = false;
@@ -1010,7 +1021,7 @@ deleteBtn.onclick = () => {
             isOldChatAdmin = true;
         }
 
-        if (isGlobalAdmin || isServerAdmin || isOldChatAdmin) {
+        if (isAccountAdmin || isGlobalAdmin || isServerAdmin || isOldChatAdmin) {
 
             const updates = {};
 
