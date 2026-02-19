@@ -1176,7 +1176,7 @@ const rtcConfig = {
 
 
 const audioConnect = new Audio('./audio/con_sound.mp3');
-const audioDisconnect = new Audio('./audio/discon_sound.mp3');
+const audioDisconnect = new Audio('./audio/discon.mp3');
 const audioMute = new Audio('./audio/mute.mp3');
 const audioUnmute = new Audio('./audio/unmute.mp3');
 const audioStartStr = new Audio('./audio/startstr.mp3');
