@@ -1066,7 +1066,7 @@ uploadBtn.onclick = () => imageInput.click();
 imageInput.onchange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > MAX_FILE_SIZE) { showAlert('File too large (max 1Mb)'); e.target.value = ''; return; }
+    if (file.size > MAX_FILE_SIZE) { showAlert('File too large (max 10Mb)'); e.target.value = ''; return; }
     selectedImageBase64 = null; selectedFileBase64 = null;
     const existing = document.querySelector('#messageInput + img, #messageInput + .file-preview');
     if (existing) existing.remove();
