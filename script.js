@@ -1059,14 +1059,14 @@ deleteBtn.onclick = () => {
 // Send message logic
 const uploadBtn = document.getElementById('uploadBtn');
 const imageInput = document.getElementById('imageInput');
-const MAX_FILE_SIZE = 200 * 1024;
+const MAX_FILE_SIZE = 2000 * 1024;
 let selectedImageBase64 = null, selectedFileBase64 = null, selectedFileName = null, selectedFileType = null;
 
 uploadBtn.onclick = () => imageInput.click();
 imageInput.onchange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > MAX_FILE_SIZE) { showAlert('File too large (max 200KB)'); e.target.value = ''; return; }
+    if (file.size > MAX_FILE_SIZE) { showAlert('File too large (max 2000KB)'); e.target.value = ''; return; }
     selectedImageBase64 = null; selectedFileBase64 = null;
     const existing = document.querySelector('#messageInput + img, #messageInput + .file-preview');
     if (existing) existing.remove();
