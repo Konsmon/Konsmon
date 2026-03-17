@@ -1234,9 +1234,15 @@ async function joinVoiceChat(id) {
         });
         console.log('%c[VOICE] Microphone access GRANTED', 'color: #22c55e;');
     } catch (err) {
-        console.error('[VOICE] Microphone access DENIED', err);
-        showAlert("Microphone denied: " + err.message);
-        return;
+        console.warn('[VOICE] Microphone access DENIED or not found. Joining as listener.', err);
+        showAlert("No microphone detected. You are joining as a listener only.");
+
+        const fakeCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const fakeDest = fakeCtx.createMediaStreamDestination();
+        localStream = fakeDest.stream;
+
+        const myUid = getVoiceUid();
+        localMutes[myUid + '_Mic'] = true;
     }
 
     if (audioConnect) audioConnect.play().catch(() => { });
