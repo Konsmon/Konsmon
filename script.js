@@ -1357,6 +1357,7 @@ function createPeerConnection(targetUid) {
     pc.oniceconnectionstatechange = () => {
         const state = pc.iceConnectionState;
         if (state === 'failed' || state === 'disconnected') {
+            // Ignorujemy lub czyścimy
         }
     };
 
@@ -1364,8 +1365,18 @@ function createPeerConnection(targetUid) {
         localStream.getAudioTracks().forEach(t => pc.addTrack(t, localStream));
     }
 
+    // FIX: Wymuszamy gotowość na odbiór wideo od samego początku połączenia.
+    // Dzięki temu, gdy ktoś nowy dołączy, od razu będzie mógł odebrać ekran.
+    let hasVideo = false;
     if (localScreenStream) {
-        localScreenStream.getVideoTracks().forEach(t => pc.addTrack(t, localScreenStream));
+        localScreenStream.getVideoTracks().forEach(t => {
+            pc.addTrack(t, localScreenStream);
+            hasVideo = true;
+        });
+    }
+
+    if (!hasVideo) {
+        pc.addTransceiver('video', { direction: 'recvonly' });
     }
 
     pc.onicecandidate = (e) => {
@@ -1403,11 +1414,9 @@ function createPeerConnection(targetUid) {
 
             remoteStreams[targetUid] = stream;
 
-
             if (currentWatchedUid === targetUid) {
                 viewUserStream(targetUid);
             }
-
 
             const nickEl = document.getElementById(`voice-nick-${targetUid}`);
             if (nickEl) nickEl.classList.add('is-streaming-active');
@@ -1849,7 +1858,6 @@ async function startScreenShare() {
     }
 
     try {
-
         const stream = await navigator.mediaDevices.getDisplayMedia({
             video: { cursor: "always" },
             audio: false 
@@ -1857,48 +1865,41 @@ async function startScreenShare() {
 
         localScreenStream = stream;
 
- 
         stream.getVideoTracks()[0].onended = () => {
             stopScreenShare();
         };
 
-
         audioStartStr.play().catch(() => { });
 
-   
         const videoTrack = stream.getVideoTracks()[0];
-
 
         if (voicePresenceRef) {
             voicePresenceRef.update({ isStreaming: true });
         }
 
-
         Object.keys(peers).forEach(targetUid => {
             const pc = peers[targetUid];
             if (pc) {
+                // FIX: Używamy transceivers zamiast senders, żeby poprawnie obsłużyć status 'recvonly'
+                const transceivers = pc.getTransceivers();
+                const videoTransceiver = transceivers.find(t => t.receiver && t.receiver.track && t.receiver.track.kind === 'video');
 
-                const senders = pc.getSenders();
-                const videoSender = senders.find(s => s.track && s.track.kind === 'video');
-
-                if (videoSender) {
-                    videoSender.replaceTrack(videoTrack);
+                if (videoTransceiver) {
+                    videoTransceiver.direction = 'sendrecv';
+                    videoTransceiver.sender.replaceTrack(videoTrack);
                 } else {
                     pc.addTrack(videoTrack, localScreenStream);
                 }
 
-
                 initiateCall(targetUid);
             }
         });
-
 
         viewUserStream(getVoiceUid(), true);
         renderServerList();
 
     } catch (err) {
         console.error("Error starting screen share:", err);
-
         if (err.name !== 'NotAllowedError') {
             showAlert("Could not start stream: " + err.message);
         }
@@ -1910,29 +1911,29 @@ function stopScreenShare() {
 
     audioEndStr.play().catch(() => { });
 
-
     localScreenStream.getTracks().forEach(t => t.stop());
     localScreenStream = null;
-
 
     if (voicePresenceRef) {
         voicePresenceRef.update({ isStreaming: false });
     }
 
-
     Object.keys(peers).forEach(targetUid => {
         const pc = peers[targetUid];
         if (pc) {
-            const senders = pc.getSenders();
-            const videoSender = senders.find(s => s.track && s.track.kind === 'video');
-            if (videoSender) {
-                pc.removeTrack(videoSender);
-            }
+            // FIX: Zmieniamy kierunek z powrotem na samo odbieranie, żeby nie wysyłać pustych tracków
+            const transceivers = pc.getTransceivers();
+            const videoTransceiver = transceivers.find(t => t.receiver && t.receiver.track && t.receiver.track.kind === 'video');
 
-            initiateCall(targetUid);
+            if (videoTransceiver) {
+                videoTransceiver.direction = 'recvonly';
+                if (videoTransceiver.sender.track) {
+                    pc.removeTrack(videoTransceiver.sender);
+                }
+            }
+            initiateCall(targetUid); // Wymuszamy odświeżenie połączeń dla wszystkich
         }
     });
-
 
     if (currentWatchedUid === getVoiceUid()) {
         detachChat(); 
