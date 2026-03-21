@@ -1291,6 +1291,41 @@ async function joinVoiceChat(id) {
     await voicePresenceRef.onDisconnect().remove();
     await voicePresenceRef.set({ nick: getVoiceNick(), joinedAt: Date.now() });
 
+    // BUG FIX 1: Wykryj kick z zewnątrz (np. gdy admin usunie twój wpis presence)
+    voicePresenceRef.on('value', snap => {
+        if (!snap.exists() && currentVoiceChatId === id) {
+            leaveVoiceChat(true);
+        }
+    });
+
+    // BUG FIX 2 + 3: Gdy ktokolwiek wychodzi z kanału - odegraj dźwięk i wyczyść jego zasoby
+    db.ref(`voice_chats/${id}/users`).on('child_removed', snap => {
+        const leftUid = snap.key;
+
+        // Dźwięk wyjścia dla innych (nie dla siebie - siebie obsługuje leaveVoiceChat)
+        if (leftUid !== myUid) {
+            audioDisconnect.play().catch(() => {});
+        }
+
+        // Wyczyść visualizer i audio dla wychodzącego użytkownika
+        if (visualizerIntervals[leftUid]) {
+            clearInterval(visualizerIntervals[leftUid]);
+            delete visualizerIntervals[leftUid];
+        }
+        if (visualizerStreams[leftUid]) {
+            visualizerStreams[leftUid].getTracks().forEach(t => t.stop());
+            delete visualizerStreams[leftUid];
+        }
+        const audioEl = document.getElementById('audio-' + leftUid);
+        if (audioEl) audioEl.remove();
+
+        // Zamknij peer connection wychodzącego
+        if (peers[leftUid]) {
+            peers[leftUid].close();
+            delete peers[leftUid];
+        }
+    });
+
     voiceSignalingRef = db.ref(`voice_signaling/${id}/${myUid}`);
     voiceSignalingRef.on('child_added', async (snap) => {
         const msg = snap.val(); if (!msg) return;
@@ -1334,7 +1369,15 @@ function leaveVoiceChat(wasKicked = false) {
     Object.values(peers).forEach(pc => pc.close()); peers = {};
     Object.values(visualizerIntervals).forEach(iv => clearInterval(iv)); visualizerIntervals = {};
     const c = document.getElementById('webrtc-audio-container'); if (c) c.innerHTML = '';
-    if (voicePresenceRef) { if (!wasKicked) audioDisconnect.play().catch(() => { }); voicePresenceRef.remove(); voicePresenceRef.onDisconnect().cancel(); voicePresenceRef = null; }
+    if (voicePresenceRef) {
+        voicePresenceRef.off(); // BUG FIX 1: zdejmij listener PRZED remove(), żeby nie wywołać pętli
+        if (!wasKicked) audioDisconnect.play().catch(() => { }); // BUG FIX 2: graj dźwięk PRZED usunięciem presence
+        voicePresenceRef.remove();
+        voicePresenceRef.onDisconnect().cancel();
+        voicePresenceRef = null;
+    }
+    // BUG FIX 3: zdejmij listener child_removed żeby nie zostawać w tle po wyjściu
+    if (currentVoiceChatId) db.ref(`voice_chats/${currentVoiceChatId}/users`).off('child_removed');
     if (voiceSignalingRef) { voiceSignalingRef.off(); voiceSignalingRef.remove(); voiceSignalingRef = null; }
 
     const prevPingEl = document.getElementById(`ping-${currentVoiceChatId}`);
