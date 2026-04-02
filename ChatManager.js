@@ -1,11 +1,4 @@
 // ChatManager.js
-// Handles everything related to text channels:
-//   - joining / leaving / deleting channels
-//   - sending, receiving and deleting messages
-//   - @mention autocomplete and ping notifications
-//   - server and channel creation modals
-//   - server list rendering (text + voice tree)
-
 class ChatManager {
     constructor(state, modal, auth) {
         this.state = state;
@@ -36,10 +29,6 @@ class ChatManager {
         this._subscribeFirebase();
     }
 
-    // -------------------------------------------------------------------------
-    // Firebase subscriptions
-    // -------------------------------------------------------------------------
-
     _subscribeFirebase() {
         // Keep local caches in sync with the database
         this.state.chatsRef.on('value', snap => {
@@ -57,10 +46,6 @@ class ChatManager {
             this.renderServerList();
         });
     }
-
-    // -------------------------------------------------------------------------
-    // UI bindings
-    // -------------------------------------------------------------------------
 
     _bindUI() {
         const leaveBtn  = document.getElementById('leaveBtn');
@@ -96,10 +81,6 @@ class ChatManager {
             this.searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') this.renderServerList(); });
         }
     }
-
-    // -------------------------------------------------------------------------
-    // Server list rendering
-    // -------------------------------------------------------------------------
 
     renderServerList() {
         const listEl = document.getElementById('serverList');
@@ -216,7 +197,6 @@ class ChatManager {
             };
             listEl.appendChild(chanDiv);
 
-            // Show who is currently in this voice channel
             const voiceData = this.state.voiceChatsCache[channelId];
             if (voiceData?.users) {
                 Object.entries(voiceData.users).forEach(([uid, uData]) => {
@@ -225,10 +205,6 @@ class ChatManager {
             }
         });
     }
-
-    // -------------------------------------------------------------------------
-    // Server / channel creation
-    // -------------------------------------------------------------------------
 
     openCreateModal() {
         this.modal.show(`
@@ -305,10 +281,6 @@ class ChatManager {
         };
     }
 
-    // -------------------------------------------------------------------------
-    // Server access check (password gate)
-    // -------------------------------------------------------------------------
-
     _checkServerAccess(serverId, callback) {
         const server = this.state.serversCache[serverId];
         if (!server) return;
@@ -346,12 +318,8 @@ class ChatManager {
         };
     }
 
-    // -------------------------------------------------------------------------
-    // Join / leave / delete chat
-    // -------------------------------------------------------------------------
-
     joinChat(id) {
-        // Remove any active stream overlay when switching to text
+
         const overlay = document.getElementById('stream-overlay');
         if (overlay) overlay.remove();
 
@@ -363,7 +331,7 @@ class ChatManager {
         this.state.currentChatId  = id;
         this.state.currentChatRef = this.state.db.ref('chats/' + id);
 
-        // Look up channel name from the server tree
+
         let foundName = null;
         Object.values(this.state.serversCache).forEach(s => {
             if (s.channels?.text?.[id]) foundName = s.channels.text[id].name;
@@ -379,12 +347,12 @@ class ChatManager {
         this.state.chatParticipants = new Set();
         this._hideMentionBox();
 
-        // Clear unread ping indicator for current user
+
         if (this.state.currentUser?.uid) {
             this.state.db.ref(`chats/${id}/pings/${this.state.currentUser.uid}`).remove();
         }
 
-        // Detach previous message listener before attaching a new one
+
         if (this.state.messagesRef) this.state.messagesRef.off();
 
         this.state.messagesRef = this.state.db.ref(`chats/${id}/messages`);
@@ -413,11 +381,10 @@ class ChatManager {
                 ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                 : (m.time ? String(m.time).split(' ').pop() : '');
 
-            // Display [ADMIN] badge for registered admin users
             let displayNick = m.nickname || 'Anon';
             if (m.userId && this.state.usersCacheById[m.userId]?.admin === 1) displayNick += ' [ADMIN]';
 
-            // Date separator row between days
+
             const msgDate  = new Date(m.createdAt || Date.now());
             const dateOnly = msgDate.toLocaleDateString();
             if (lastDate !== dateOnly) {
@@ -432,7 +399,7 @@ class ChatManager {
             msgWrap.className    = 'msg-wrap';
             msgWrap.dataset.date = dateOnly;
 
-            // Meta line: [time] Nick
+
             const meta     = document.createElement('div'); meta.className = 'meta-line';
             const timeSpan = document.createElement('span'); timeSpan.textContent = `[${timeStr}] `;
             const nickSpan = document.createElement('span');
@@ -451,7 +418,7 @@ class ChatManager {
                 this._renderFile(bubble, m.fileBase64, m.fileName);
             }
 
-            // Click message to reveal delete button (own messages or admin)
+
             bubble.addEventListener('click', () => {
                 if (!this.state.currentUser) return;
                 const existing = bubble.querySelector('.trash-icon');
@@ -482,7 +449,7 @@ class ChatManager {
             msgWrap.appendChild(bubble);
             this.messagesEl.appendChild(msgWrap);
 
-            // Auto-scroll if near the bottom
+
             if (initialLoad || (this.messagesEl.scrollHeight - this.messagesEl.scrollTop - this.messagesEl.clientHeight < 300)) {
                 this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
             }
@@ -567,10 +534,6 @@ class ChatManager {
         };
     }
 
-    // -------------------------------------------------------------------------
-    // Sending messages
-    // -------------------------------------------------------------------------
-
     sendMessage() {
         if (!this.state.currentChatId) { this.modal.alert('Join a chat first'); return; }
         this._actuallySendMessage();
@@ -613,9 +576,6 @@ class ChatManager {
         });
     }
 
-    // -------------------------------------------------------------------------
-    // File upload handling
-    // -------------------------------------------------------------------------
 
     _handleFileSelect(e) {
         const file = e.target.files[0];
@@ -648,9 +608,6 @@ class ChatManager {
         reader.readAsDataURL(file);
     }
 
-    // -------------------------------------------------------------------------
-    // Message rendering helpers
-    // -------------------------------------------------------------------------
 
     _renderTextWithLinks(bubble, text) {
         const urlRegex = /(?:https?:\/\/[^\s]+)|(?:www\.[^\s]+)/g;
@@ -700,9 +657,6 @@ class ChatManager {
         bubble.appendChild(fileLink);
     }
 
-    // -------------------------------------------------------------------------
-    // Mention autocomplete
-    // -------------------------------------------------------------------------
 
     _ensureMentionBox() {
         if (this.mentionBox) return this.mentionBox;
@@ -763,9 +717,6 @@ class ChatManager {
         this._showMentionBox(filtered);
     }
 
-    // -------------------------------------------------------------------------
-    // Mention resolution and ping notifications
-    // -------------------------------------------------------------------------
 
     _extractMentionedUserIds(text) {
         if (!text) return [];
@@ -812,7 +763,6 @@ class ChatManager {
         });
     }
 
-    // Returns the set of chat IDs that have an unread ping for the current user
     _getPingedChats() {
         const set = new Set();
         if (!this.state.currentUser?.uid) return set;
