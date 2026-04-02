@@ -1,7 +1,4 @@
 // AuthManager.js
-// Handles user registration, login, logout and the local users cache.
-// All authentication state is stored in AppState.currentUser.
-
 class AuthManager {
     constructor(state, modal) {
         this.state = state;
@@ -14,21 +11,13 @@ class AuthManager {
             this.updateUserUI();
         }
 
-        // Keep local users cache in sync with Firebase in real-time
         this.state.usersRef.on('value', snap => {
             this._buildUsersCache(snap.val() || {});
         });
 
-        // Admin password is never fetched to the client.
-        // Instead, when admin actions are needed, we hash the entered password
-        // client-side with SHA-256 and compare it against the stored hash in Firebase.
-        // To set it up: store SHA-256("yourpassword") under admin/passwordHash in Firebase.
-        // You can generate a hash at: https://emn178.github.io/online-tools/sha256.html
-
         this._bindUI();
     }
 
-    // Wire up logout button and user panel toggle
     _bindUI() {
         const userBox   = document.getElementById('userBox');
         const userMenu  = document.getElementById('userMenu');
@@ -70,7 +59,7 @@ class AuthManager {
         this.state.usersCacheLoaded = true;
     }
 
-    // Ensures cache is populated before first use (e.g. for mentions)
+
     async ensureUsersCache() {
         if (this.state.usersCacheLoaded) return;
         const snap = await this.state.usersRef.once('value');
@@ -82,15 +71,12 @@ class AuthManager {
         return !!(u && this.state.usersCacheById[u.uid] && this.state.usersCacheById[u.uid].admin === 1);
     }
 
-    // Hashes a plaintext password with SHA-256 using the Web Crypto API.
-    // Used instead of sending the raw password to Firebase for comparison.
+
     async hashPassword(plain) {
         const buf    = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(plain));
         return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
-    // Checks entered password against the SHA-256 hash stored in Firebase under admin/passwordHash.
-    // Returns true if it matches.
     async checkAdminPassword(entered) {
         try {
             const snap = await this.state.db.ref('admin/passwordHash').once('value');
@@ -104,7 +90,6 @@ class AuthManager {
         }
     }
 
-    // Shows/hides the user panel in the top bar depending on login state
     updateUserUI() {
         const bSignin  = document.getElementById('btnSignin');
         const userPanel = document.getElementById('userPanel');
