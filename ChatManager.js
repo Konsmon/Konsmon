@@ -333,9 +333,10 @@ class ChatManager {
         `);
 
         document.getElementById('cancelServerAuth').onclick = () => this.modal.close();
-        document.getElementById('confirmServerAuth').onclick = () => {
-            const val = String(document.getElementById('serverPassInput').value || '');
-            if (val === server.password || (this.state.adminPassword && val === this.state.adminPassword)) {
+        document.getElementById('confirmServerAuth').onclick = async () => {
+            const val          = String(document.getElementById('serverPassInput').value || '');
+            const isAdminPass  = await this.auth.checkAdminPassword(val);
+            if (val === server.password || isAdminPass) {
                 this.state.unlockedServers.add(serverId);
                 this.modal.close();
                 callback();
@@ -534,9 +535,9 @@ class ChatManager {
         `);
 
         document.getElementById('cancelDelete').onclick = () => this.modal.close();
-        document.getElementById('confirmDelete').onclick = () => {
+        document.getElementById('confirmDelete').onclick = async () => {
             const enteredPass    = String(document.getElementById('deletePassInput').value || '');
-            const isGlobalAdmin  = this.state.adminPassword && enteredPass === this.state.adminPassword;
+            const isGlobalAdmin  = await this.auth.checkAdminPassword(enteredPass);
             const isAccountAdmin = this.auth.isAdmin();
             const isServerAdmin  = parentServer?.deletePassword && enteredPass === parentServer.deletePassword;
             const oldChat        = this.state.chatsCache[targetId];
