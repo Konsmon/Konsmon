@@ -1,7 +1,4 @@
 // AppState.js
-// Central state store shared across all modules.
-// Instead of scattered globals, every class reads/writes here.
-
 const AppState = {
     // --- Firebase refs ---
     db: null,
@@ -11,7 +8,7 @@ const AppState = {
     chatsRef: null,
 
     // --- Auth ---
-    currentUser: null,       // { uid, nick } or null for anon
+    currentUser: null, 
     adminPassword: null,
     localAnonUid: null,
     localAnonNick: null,
@@ -30,7 +27,7 @@ const AppState = {
     expandedServers: new Set(),
     currentServerId: null,
     currentChannelId: null,
-    currentChannelType: null,   // 'text' | 'voice'
+    currentChannelType: null, 
     unlockedServers: new Set(),
 
     // --- Text chat ---
