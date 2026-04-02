@@ -1,19 +1,14 @@
 // ModalManager.js
-// Handles all modal dialogs and alert popups.
-// Every other class calls ModalManager.show() / ModalManager.alert() instead of touching the DOM directly.
-
 class ModalManager {
     constructor() {
         this.modal        = document.getElementById('modal');
         this.modalContent = document.getElementById('modalContent');
         this._resizeHandler = null;
 
-        // Close on backdrop click or Escape key
         this.modal.addEventListener('click', e => { if (e.target === this.modal) this.close(); });
         document.addEventListener('keydown', e => { if (e.key === 'Escape') this.close(); });
     }
 
-    // Scales an image inside the modal to fit the viewport
     _adjustImage() {
         const imgEl = this.modalContent.querySelector('.modal-image');
         if (!imgEl) return;
@@ -33,7 +28,6 @@ class ModalManager {
         }
     }
 
-    // Renders arbitrary HTML inside the modal
     show(html) {
         this.modalContent.innerHTML = html;
         this.modal.style.display = 'flex';
@@ -52,7 +46,6 @@ class ModalManager {
         }
     }
 
-    // Simple OK alert with optional callback fired after dismiss
     alert(msg, cb) {
         this.show(`
             <div style="min-width:260px">
@@ -67,7 +60,6 @@ class ModalManager {
     }
 }
 
-// Shared HTML-escape helper used across all modules
 function escapeHtml(text) {
     return String(text || '')
         .replace(/&/g, '&amp;')
