@@ -19,12 +19,11 @@ class AuthManager {
             this._buildUsersCache(snap.val() || {});
         });
 
-        // Fetch admin password once from DB (used for elevated actions)
-        this.state.db.ref('admin/password').once('value').then(snap => {
-            this.state.adminPassword = snap.val() || '';
-        }).catch(err => {
-            console.error('Error, admin password was not found', err);
-        });
+        // Admin password is never fetched to the client.
+        // Instead, when admin actions are needed, we hash the entered password
+        // client-side with SHA-256 and compare it against the stored hash in Firebase.
+        // To set it up: store SHA-256("yourpassword") under admin/passwordHash in Firebase.
+        // You can generate a hash at: https://emn178.github.io/online-tools/sha256.html
 
         this._bindUI();
     }
@@ -81,6 +80,28 @@ class AuthManager {
     isAdmin() {
         const u = this.state.currentUser;
         return !!(u && this.state.usersCacheById[u.uid] && this.state.usersCacheById[u.uid].admin === 1);
+    }
+
+    // Hashes a plaintext password with SHA-256 using the Web Crypto API.
+    // Used instead of sending the raw password to Firebase for comparison.
+    async hashPassword(plain) {
+        const buf    = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(plain));
+        return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    // Checks entered password against the SHA-256 hash stored in Firebase under admin/passwordHash.
+    // Returns true if it matches.
+    async checkAdminPassword(entered) {
+        try {
+            const snap = await this.state.db.ref('admin/passwordHash').once('value');
+            const storedHash = snap.val();
+            if (!storedHash) return false;
+            const enteredHash = await this.hashPassword(entered);
+            return enteredHash === storedHash;
+        } catch (e) {
+            console.error('Admin password check failed:', e);
+            return false;
+        }
     }
 
     // Shows/hides the user panel in the top bar depending on login state
