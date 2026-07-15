@@ -138,15 +138,22 @@ class ChatManager {
         const arrow = isExpanded ? '▼' : '▶';
         const serverHasPing = !!(server.channels?.text &&
             Object.keys(server.channels.text).some(cid => this.state.pingedChats.has(cid)));
+        const isLocked = !!(server.password && server.password !== '');
 
-        serverDiv.innerHTML = `<span class="tree-prefix" style="font-size:10px;vertical-align:middle;margin-right:6px;">${arrow}</span>${escapeHtml(server.name)}${serverHasPing ? '<span class="ping-dot" title="Mention"></span>' : ''}`;
+        serverDiv.innerHTML = `<span class="tree-prefix" style="font-size:10px;vertical-align:middle;margin-right:6px;">${arrow}</span>${escapeHtml(server.name)}${serverHasPing ? '<span class="ping-dot" title="Mention"></span>' : ''}${isLocked ? '<span class="lock-icon" title="Password protected">🔒︎</span>' : ''}`;
 
         serverDiv.onclick = () => {
-            this.state.currentServerId = serverId;
-            this.state.expandedServers.has(serverId)
-                ? this.state.expandedServers.delete(serverId)
-                : this.state.expandedServers.add(serverId);
-            this.renderServerList();
+            if (this.state.expandedServers.has(serverId)) {
+                this.state.expandedServers.delete(serverId);
+                this.renderServerList();
+                return;
+            }
+            this._checkServerAccess(serverId, () => {
+                this.state.currentServerId = serverId;
+                this.state.expandedServers.add(serverId);
+                this.renderServerList();
+                this._promptServerKey(serverId);
+            });
         };
         serverDiv.oncontextmenu = (e) => {
             e.preventDefault();
@@ -256,6 +263,10 @@ class ChatManager {
                 <label>Admin/Delete Password</label>
                 <input id="newDeletePass" placeholder="required to edit/delete server" type="password" />
             </div>
+            <div class="row" style="flex-direction:row !important;align-items:center !important;gap:8px;">
+                <input id="newEncrypted" type="checkbox" style="width:auto !important;" />
+                <label style="width:auto !important;margin:0;">Enable message encryption (E2E)</label>
+            </div>
             <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
                 <button id="cancelCreate" class="btn btn-ghost">Cancel</button>
                 <button id="confirmCreate" class="btn btn-primary">Create Server</button>
@@ -267,6 +278,7 @@ class ChatManager {
             const name       = String(document.getElementById('newName').value       || '').trim();
             const pass       = String(document.getElementById('newPass').value       || '');
             const deletePass = String(document.getElementById('newDeletePass').value || '');
+            const encrypted  = document.getElementById('newEncrypted').checked;
 
             if (!name)                        { this.modal.alert('Provide server name');    return; }
             if (name.length > this.NAME_MAX)  { this.modal.alert(`Name too long (max ${this.NAME_MAX} chars)`); return; }
@@ -281,6 +293,7 @@ class ChatManager {
 
             newServerRef.set({
                 name, password: hashedPass, deletePassword: hashedDeletePass,
+                encrypted,
                 createdAt: Date.now(),
                 ownerId: this.state.currentUser ? this.state.currentUser.uid : null,
                 channels: {
@@ -289,9 +302,37 @@ class ChatManager {
                 }
             }).then(() => {
                 this.modal.close();
-                this.modal.alert('Server created! Please select it from the list.');
+                if (encrypted) {
+                    const keyHex = CryptoManager.generateKeyHex();
+                    CryptoManager.setServerKey(newServerRef.key, keyHex);
+                    this._showKeyModal(keyHex);
+                } else {
+                    this.modal.alert('Server created! Please select it from the list.');
+                }
             }).catch(e => this.modal.alert('Error: ' + e.message));
         };
+    }
+
+    // Show generated key
+    _showKeyModal(keyHex) {
+        this.modal.show(`
+            <h4>SERVER ENCRYPTION KEY</h4>
+            <p style="font-size:13px;opacity:0.8;margin:0 0 8px;">
+                Save this key now — it is <strong>not stored anywhere</strong> except your browser.
+                Share it privately with server members. Without it, messages cannot be decrypted.
+            </p>
+            <div class="key-box" id="keyBox">${keyHex}</div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+                <button id="copyKey" class="btn btn-ghost">Copy Key</button>
+                <button id="keyDone" class="btn btn-primary">Done</button>
+            </div>
+        `);
+        document.getElementById('copyKey').onclick = () => {
+            navigator.clipboard.writeText(keyHex).then(() => {
+                document.getElementById('copyKey').textContent = 'Copied!';
+            }).catch(() => {});
+        };
+        document.getElementById('keyDone').onclick = () => this.modal.close();
     }
 
     openChannelCreateModal(serverId, type) {
@@ -330,6 +371,23 @@ class ChatManager {
         const target   = isServer ? server : server.channels?.[kind]?.[channelId];
         if (!target) return;
 
+        const encRows = !isServer ? '' : (server.encrypted ? `
+            <div class="row">
+                <label>Encryption Key (stored locally)</label>
+                <div style="display:flex;gap:6px;width:100%;">
+                    <input id="editLocalKey" maxlength="64" placeholder="Paste 64 hex chars" style="font-family:monospace;flex:1;" value="${escapeHtml(CryptoManager.getServerKey(serverId) || '')}" />
+                    <button id="saveLocalKey" class="btn btn-ghost">Update</button>
+                </div>
+            </div>` : `
+            <div class="row" style="flex-direction:row !important;align-items:center !important;gap:8px;">
+                <input id="editEnableEnc" type="checkbox" style="width:auto !important;" />
+                <label style="width:auto !important;margin:0;">Enable message encryption (E2E)</label>
+            </div>
+            <div class="row">
+                <label>Encryption Key (empty = generate)</label>
+                <input id="editEncKey" maxlength="64" placeholder="Optional: own 64 hex chars" style="font-family:monospace;" />
+            </div>`);
+
         const serverRows = isServer ? `
             <div class="row">
                 <label>New Join Password (empty = keep)</label>
@@ -342,7 +400,8 @@ class ChatManager {
             <div class="row">
                 <label>New Admin Password (empty = keep)</label>
                 <input id="editAdminPass" type="password" placeholder="unchanged" />
-            </div>` : '';
+            </div>
+            ${encRows}` : '';
 
         this.modal.show(`
             <h4>EDIT ${isServer ? 'SERVER' : kind.toUpperCase() + ' CHANNEL'}: ${escapeHtml(target.name || '')}</h4>
@@ -366,6 +425,19 @@ class ChatManager {
 
         document.getElementById('editCancel').onclick = () => this.modal.close();
 
+        // Local key update (no admin needed)
+        const saveLocalKeyBtn = document.getElementById('saveLocalKey');
+        if (saveLocalKeyBtn) {
+            saveLocalKeyBtn.onclick = () => {
+                const key = String(document.getElementById('editLocalKey').value || '').trim();
+                if (!CryptoManager.isValidKey(key)) { this.modal.alert('Key must be exactly 64 hex characters.'); return; }
+                CryptoManager.setServerKey(serverId, key);
+                this.modal.close();
+                this.modal.alert('Encryption key saved locally.');
+                if (this.state.currentChatId) this.joinChat(this.state.currentChatId);
+            };
+        }
+
         document.getElementById('editSave').onclick = async () => {
             const name = String(document.getElementById('editName').value || '').trim();
             if (!name)                       { this.modal.alert('Provide a name'); return; }
@@ -378,6 +450,7 @@ class ChatManager {
             }
 
             const updates = {};
+            let newKeyHex = null;
             if (isServer) {
                 updates[`servers/${serverId}/name`] = name;
 
@@ -388,13 +461,30 @@ class ChatManager {
                 if (makePublic)    updates[`servers/${serverId}/password`] = '';
                 else if (joinPass) updates[`servers/${serverId}/password`] = await this.auth.hashPassword(joinPass);
                 if (adminPass)     updates[`servers/${serverId}/deletePassword`] = await this.auth.hashPassword(adminPass);
+
+                // Enable encryption
+                const encCheckbox = document.getElementById('editEnableEnc');
+                if (encCheckbox?.checked) {
+                    const typedKey = String(document.getElementById('editEncKey').value || '').trim();
+                    if (typedKey && !CryptoManager.isValidKey(typedKey)) {
+                        this.modal.alert('Key must be exactly 64 hex characters (or empty to generate).');
+                        return;
+                    }
+                    newKeyHex = typedKey || CryptoManager.generateKeyHex();
+                    updates[`servers/${serverId}/encrypted`] = true;
+                }
             } else {
                 updates[`servers/${serverId}/channels/${kind}/${channelId}/name`] = name;
             }
 
             this.state.db.ref().update(updates).then(() => {
                 this.modal.close();
-                this.modal.alert('Changes saved.');
+                if (newKeyHex) {
+                    CryptoManager.setServerKey(serverId, newKeyHex);
+                    this._showKeyModal(newKeyHex);
+                } else {
+                    this.modal.alert('Changes saved.');
+                }
             }).catch(e => this.modal.alert('Error: ' + e.message));
         };
 
@@ -496,6 +586,49 @@ class ChatManager {
         };
     }
 
+    // Encryption key prompt
+    _promptServerKey(serverId) {
+        const server = this.state.serversCache[serverId];
+        if (!server?.encrypted) return;
+        if (CryptoManager.getServerKey(serverId)) return;
+
+        this.modal.show(`
+            <h4>ENCRYPTED SERVER</h4>
+            <p style="font-size:13px;opacity:0.8;margin:0 0 8px;">
+                Messages on this server are end-to-end encrypted.
+                Enter the 64-character key to read and write messages.
+            </p>
+            <div class="row">
+                <label>Encryption Key (64 hex chars)</label>
+                <input id="serverKeyInput" maxlength="64" placeholder="Paste key here" style="font-family:monospace;" />
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+                <button id="skipServerKey" class="btn btn-ghost">Skip</button>
+                <button id="confirmServerKey" class="btn btn-primary">Save Key</button>
+            </div>
+        `);
+
+        document.getElementById('skipServerKey').onclick = () => this.modal.close();
+        document.getElementById('confirmServerKey').onclick = () => {
+            const key = String(document.getElementById('serverKeyInput').value || '').trim();
+            if (!CryptoManager.isValidKey(key)) { this.modal.alert('Key must be exactly 64 hex characters.'); return; }
+            CryptoManager.setServerKey(serverId, key);
+            this.modal.close();
+            // Redecrypt open chat
+            if (this.state.currentChatId && this.state.currentServerId === serverId) {
+                this.joinChat(this.state.currentChatId);
+            }
+        };
+    }
+
+    // Server of chat
+    _findServerIdByChatId(chatId) {
+        for (const [sid, s] of Object.entries(this.state.serversCache)) {
+            if (s.channels?.text?.[chatId]) return sid;
+        }
+        return null;
+    }
+
     // Join chat
     joinChat(id) {
         const overlay = document.getElementById('stream-overlay');
@@ -519,6 +652,17 @@ class ChatManager {
         this.welcomeArea.style.display = 'none';
         this.chatArea.style.display    = 'flex';
         this.messagesEl.innerHTML      = '';
+
+        // Loading indicator
+        console.log(`%c[CHAT] Loading chat: ${id}`, 'color:#0ea5ff;font-weight:bold;');
+        const loadingEl = document.createElement('div');
+        loadingEl.className   = 'chat-status';
+        loadingEl.textContent = 'Loading...';
+        this.messagesEl.appendChild(loadingEl);
+        const clearLoading = () => {
+            const el = this.messagesEl.querySelector('.chat-status');
+            if (el) el.remove();
+        };
 
         this.auth.ensureUsersCache().catch(() => {});
         this.state.chatParticipants = new Set();
@@ -547,7 +691,10 @@ class ChatManager {
             }
         };
 
+        const chatServerId = this._findServerIdByChatId(id);
+
         this.state.messagesRef.on('child_added', snap => {
+            clearLoading();
             const m     = snap.val();
             const msgId = snap.key;
 
@@ -587,7 +734,9 @@ class ChatManager {
 
             const bubble = document.createElement('div'); bubble.className = 'message';
 
-            if (m.text) {
+            if (m.enc) {
+                this._renderEncrypted(bubble, m.enc, chatServerId);
+            } else if (m.text) {
                 this._renderTextWithLinks(bubble, m.text);
             } else if (m.imageBase64) {
                 this._renderImage(bubble, m.imageBase64, initialLoad);
@@ -632,8 +781,14 @@ class ChatManager {
         });
 
         this.state.messagesRef.once('value', () => {
+            clearLoading();
+            console.log(`%c[CHAT] Chat content loaded: ${id}`, 'color:#22c55e;');
             initialLoad = false;
             setTimeout(() => { this.messagesEl.scrollTop = this.messagesEl.scrollHeight; }, 100);
+        }, (err) => {
+            console.error('[CHAT] Failed to load chat content:', err);
+            const el = this.messagesEl.querySelector('.chat-status');
+            if (el) el.textContent = 'Failed to load chat content';
         });
     }
 
@@ -665,9 +820,25 @@ class ChatManager {
 
         const mentionedUserIds = await this._resolveMentionedUserIds(text);
 
+        // Encrypt if enabled
+        let outText = text || null;
+        let outEnc  = null;
+        const sid = this._findServerIdByChatId(this.state.currentChatId);
+        const srv = sid ? this.state.serversCache[sid] : null;
+        if (srv?.encrypted && text) {
+            const key = CryptoManager.getServerKey(sid);
+            if (!key) {
+                this.modal.alert('This server is encrypted. Click the server name to enter the encryption key first.');
+                return;
+            }
+            outEnc  = await CryptoManager.encryptText(key, text);
+            outText = null;
+        }
+
         const msgData = {
             nickname:    nick,
-            text:        text || null,
+            text:        outText,
+            enc:         outEnc,
             imageBase64: this.selectedImageBase64,
             fileBase64:  this.selectedFileBase64,
             fileName:    this.selectedFileName,
@@ -751,6 +922,20 @@ class ChatManager {
             lastIndex = idx + url.length;
         }
         if (lastIndex < text.length) bubble.appendChild(document.createTextNode(text.slice(lastIndex)));
+    }
+
+    // Decrypt or gibberish
+    _renderEncrypted(bubble, enc, serverId) {
+        const showCipher = () => {
+            bubble.classList.add('msg-encrypted');
+            bubble.textContent = '🔒 ' + enc;
+            bubble.title = 'Encrypted message (no valid key)';
+        };
+        const key = serverId ? CryptoManager.getServerKey(serverId) : null;
+        if (!key) { showCipher(); return; }
+        CryptoManager.decryptText(key, enc)
+            .then(text => this._renderTextWithLinks(bubble, text))
+            .catch(() => showCipher());
     }
 
     _renderImage(bubble, src, initialLoad) {
