@@ -1033,12 +1033,25 @@ class ChatManager {
         bubble.appendChild(img);
     }
 
+    _isAudioFile(fileName) {
+        if (!fileName) return false;
+        const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'weba', 'opus'];
+        const ext = fileName.split('.').pop().toLowerCase();
+        return audioExts.includes(ext);
+    }
+
     _renderFile(bubble, src, fileName, fileSize) {
         // Estimate legacy size
         let size = Number(fileSize) || 0;
         if (!size && src) {
             const dataIdx = src.indexOf(',');
             size = Math.round((src.length - (dataIdx + 1)) * 3 / 4);
+        }
+
+        // Check if it's an audio file
+        if (this._isAudioFile(fileName)) {
+            this._renderAudio(bubble, src, fileName, size);
+            return;
         }
 
         const link      = document.createElement('a');
@@ -1070,6 +1083,155 @@ class ChatManager {
         link.appendChild(icon);
         link.appendChild(info);
         bubble.appendChild(link);
+    }
+
+    _renderAudio(bubble, src, fileName, fileSize) {
+        const container = document.createElement('div');
+        container.className = 'audio-player-container';
+
+        // Hidden audio element for playback
+        const audio = document.createElement('audio');
+        audio.src = src;
+        audio.className = 'audio-player-element';
+
+        // Custom player controls
+        const playerDiv = document.createElement('div');
+        playerDiv.className = 'audio-player-custom';
+
+        // Play button
+        const playBtn = document.createElement('button');
+        playBtn.className = 'audio-play-btn';
+        playBtn.innerHTML = '▶';
+        playBtn.title = 'Play/Pause';
+        let isPlaying = false;
+        playBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (isPlaying) {
+                audio.pause();
+                playBtn.innerHTML = '▶';
+                isPlaying = false;
+            } else {
+                audio.play();
+                playBtn.innerHTML = '⏸';
+                isPlaying = true;
+            }
+        };
+        audio.onplay = () => { playBtn.innerHTML = '⏸'; isPlaying = true; };
+        audio.onpause = () => { playBtn.innerHTML = '▶'; isPlaying = false; };
+        audio.onended = () => { playBtn.innerHTML = '▶'; isPlaying = false; };
+
+        // Progress bar
+        const progressContainer = document.createElement('div');
+        progressContainer.className = 'audio-progress-container';
+
+        const progressBar = document.createElement('input');
+        progressBar.type = 'range';
+        progressBar.className = 'audio-progress-bar';
+        progressBar.min = '0';
+        progressBar.value = '0';
+        progressBar.onclick = (e) => e.stopPropagation();
+
+        audio.onloadedmetadata = () => {
+            progressBar.max = audio.duration;
+        };
+
+        audio.ontimeupdate = () => {
+            progressBar.value = audio.currentTime;
+        };
+
+        progressBar.oninput = () => {
+            audio.currentTime = progressBar.value;
+        };
+
+        progressContainer.appendChild(progressBar);
+
+        // Time display
+        const timeDiv = document.createElement('div');
+        timeDiv.className = 'audio-time';
+        timeDiv.textContent = '0:00 / 0:00';
+
+        const formatTime = (seconds) => {
+            if (isNaN(seconds)) return '0:00';
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        };
+
+        audio.ontimeupdate = () => {
+            progressBar.value = audio.currentTime;
+            timeDiv.textContent = `${formatTime(audio.currentTime)} / ${formatTime(audio.duration)}`;
+        };
+
+        // Volume control
+        const volumeContainer = document.createElement('div');
+        volumeContainer.className = 'audio-volume-container';
+
+        const volumeBtn = document.createElement('button');
+        volumeBtn.className = 'audio-volume-btn';
+        volumeBtn.textContent = '🔊';
+        volumeBtn.title = 'Show volume slider';
+        volumeBtn.onclick = (e) => {
+            e.stopPropagation();
+            const visible = volumeSlider.classList.toggle('audio-volume-visible');
+            volumeBtn.title = visible ? 'Hide volume slider' : 'Show volume slider';
+        };
+
+        const volumeSlider = document.createElement('input');
+        volumeSlider.type = 'range';
+        volumeSlider.className = 'audio-volume-slider';
+        volumeSlider.min = '0';
+        volumeSlider.max = '1';
+        volumeSlider.step = '0.01';
+        volumeSlider.value = '1';
+        volumeSlider.title = 'Volume';
+        volumeSlider.onclick = (e) => e.stopPropagation();
+        volumeSlider.oninput = () => {
+            audio.volume = volumeSlider.value;
+            if (audio.muted) audio.muted = false;
+        };
+
+        volumeContainer.appendChild(volumeBtn);
+        volumeContainer.appendChild(volumeSlider);
+
+        // Download button
+        const downloadBtn = document.createElement('button');
+        downloadBtn.className = 'audio-download-icon-btn';
+        downloadBtn.textContent = '↓';
+        downloadBtn.title = 'Download audio file';
+        downloadBtn.onclick = (e) => {
+            e.stopPropagation();
+            const link = document.createElement('a');
+            link.href = src;
+            link.download = fileName || 'audio';
+            link.click();
+        };
+
+        // File info section
+        const infoDiv = document.createElement('div');
+        infoDiv.className = 'audio-info';
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'audio-name';
+        nameEl.textContent = fileName || 'audio';
+
+        const sizeEl = document.createElement('span');
+        sizeEl.className = 'audio-size';
+        sizeEl.textContent = this._formatFileSize(fileSize);
+
+        infoDiv.appendChild(nameEl);
+        infoDiv.appendChild(sizeEl);
+
+        // Assemble player
+        playerDiv.appendChild(playBtn);
+        playerDiv.appendChild(progressContainer);
+        playerDiv.appendChild(timeDiv);
+        playerDiv.appendChild(volumeContainer);
+        playerDiv.appendChild(downloadBtn);
+
+        container.appendChild(audio);
+        container.appendChild(playerDiv);
+        container.appendChild(infoDiv);
+        bubble.appendChild(container);
     }
 
     // Mention autocomplete

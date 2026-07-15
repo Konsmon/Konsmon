@@ -158,19 +158,37 @@ html, body {
 
 .inputs {
     display: flex;
-    gap: 8px;
+    gap: 10px;
     flex-wrap: wrap;
     justify-content: center;
-    margin-top: 12px;
+    margin-top: 16px;
 }
 
-    .inputs input {
-        padding: 8px;
-        border-radius: 6px;
-        border: 1px solid var(--muted);
-        background: var(--muted);
-        color: var(--text);
-    }
+.inputs input {
+    padding: 11px 14px;
+    border-radius: 8px;
+    border: 1.5px solid rgba(14,165,255,0.2);
+    background: rgba(255,255,255,0.05);
+    color: var(--text);
+    font-size: 14px;
+    transition: all 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.inputs input::placeholder {
+    color: rgba(230,238,243,0.5);
+}
+
+.inputs input:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: rgba(255,255,255,0.08);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.1), 0 0 0 3px rgba(14,165,255,0.1);
+}
+
+.inputs input:hover {
+    border-color: rgba(14,165,255,0.35);
+}
 
 .chat-top {
     display: flex;
@@ -332,9 +350,9 @@ html, body {
 .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.55);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
+    background: rgba(0,0,0,0.65);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     display: none;
     align-items: center;
     justify-content: center;
@@ -342,38 +360,168 @@ html, body {
 }
 
 .modal {
-    background: var(--card);
-    padding: 20px;
-    border-radius: 8px;
-    border: 1px solid var(--muted);
-    min-width: 300px;
+    background: linear-gradient(135deg, #131516 0%, #0f1213 100%);
+    padding: 28px;
+    border-radius: 12px;
+    border: 1px solid rgba(14,165,255,0.15);
+    min-width: 320px;
     max-width: 80vw;
     max-height: 96vh;
     text-align: left;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    overflow: hidden;
+    overflow: auto;
     box-sizing: border-box;
     align-items: stretch;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(14,165,255,0.1);
+    animation: modalSlideIn 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-
-    .modal .row {
-        display: flex !important;
-        flex-direction: column !important;
-        gap: 6px;
-        margin-bottom: 8px;
-        align-items: flex-start !important;
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(10px);
     }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
 
-        .modal .row label {
-            width: 100% !important;
-        }
+.modal h4 {
+    margin: 0 0 20px 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.5px;
+}
 
-        .modal .row input {
-            width: 100% !important;
-        }
+.modal .row {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px;
+    margin-bottom: 16px;
+    align-items: flex-start !important;
+}
+
+.modal .row label {
+    width: 100% !important;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    opacity: 0.9;
+    letter-spacing: 0.3px;
+}
+
+.modal .row input[type="text"],
+.modal .row input[type="password"],
+.modal .row input[type="email"],
+.modal .row input[type="number"],
+.modal .row input[type="search"],
+.modal .row select,
+.modal .row textarea {
+    width: 100% !important;
+    padding: 11px 14px !important;
+    border-radius: 8px !important;
+    border: 1.5px solid rgba(14,165,255,0.2) !important;
+    background: rgba(15,20,21,0.6) !important;
+    color: var(--text) !important;
+    font-size: 14px !important;
+    font-family: inherit !important;
+    transition: all 200ms cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.2) !important;
+}
+
+.modal .row input[type="text"]:focus,
+.modal .row input[type="password"]:focus,
+.modal .row input[type="email"]:focus,
+.modal .row input[type="number"]:focus,
+.modal .row input[type="search"]:focus,
+.modal .row select:focus,
+.modal .row textarea:focus {
+    border-color: var(--accent) !important;
+    background: rgba(15,20,21,0.8) !important;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.2), 0 0 0 3px rgba(14,165,255,0.1) !important;
+    outline: none !important;
+}
+
+.modal .row input[type="text"]:hover,
+.modal .row input[type="password"]:hover,
+.modal .row input[type="email"]:hover,
+.modal .row input[type="number"]:hover,
+.modal .row input[type="search"]:hover,
+.modal .row select:hover,
+.modal .row textarea:hover {
+    border-color: rgba(14,165,255,0.35) !important;
+}
+
+.modal .row input[type="checkbox"] {
+    width: auto !important;
+    cursor: pointer;
+    accent-color: var(--accent);
+}
+
+.modal .row input[type="checkbox"] + label {
+    width: auto !important;
+    display: inline;
+    margin-left: 8px;
+    cursor: pointer;
+}
+
+.modal .row input[type="range"] {
+    width: 100% !important;
+    height: 6px;
+    cursor: pointer;
+    accent-color: var(--accent);
+}
+
+/* Ensure all textareas have consistent styling */
+textarea {
+    font-family: inherit;
+}
+
+/* Global input styling - catches all text inputs */
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="range"]),
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="number"],
+input[type="search"],
+select {
+    padding: 11px 14px;
+    border-radius: 8px;
+    border: 1.5px solid rgba(14,165,255,0.2);
+    background: rgba(15,20,21,0.6);
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+    transition: all 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="range"]):focus,
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="email"]:focus,
+input[type="number"]:focus,
+input[type="search"]:focus,
+select:focus {
+    border-color: var(--accent);
+    background: rgba(15,20,21,0.8);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.2), 0 0 0 3px rgba(14,165,255,0.1);
+    outline: none;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="range"]):hover,
+input[type="text"]:hover,
+input[type="password"]:hover,
+input[type="email"]:hover,
+input[type="number"]:hover,
+input[type="search"]:hover,
+select:hover {
+    border-color: rgba(14,165,255,0.35);
+}
 
 /* Modal Image Viewer */
 .modal-image {
@@ -480,6 +628,235 @@ html, body {
     font-size: 11px;
     opacity: 0.6;
     margin-top: 2px;
+}
+
+/* Audio Player */
+.audio-player-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    background: linear-gradient(135deg, rgba(14, 165, 255, 0.08), rgba(74, 222, 128, 0.05));
+    border: 1.5px solid rgba(14, 165, 255, 0.25);
+    border-radius: 10px;
+    margin-top: 6px;
+    max-width: 450px;
+    box-shadow: 0 4px 12px rgba(14, 165, 255, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.audio-player-element {
+    display: none;
+}
+
+.audio-player-custom {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    background: rgba(15, 20, 21, 0.8);
+    border-radius: 8px;
+    border: 1px solid rgba(14, 165, 255, 0.15);
+}
+
+.audio-play-btn {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 6px;
+    transition: all 150ms ease;
+    flex-shrink: 0;
+}
+
+.audio-play-btn:hover {
+    background: rgba(14, 165, 255, 0.2);
+    transform: scale(1.05);
+}
+
+.audio-play-btn:active {
+    transform: scale(0.95);
+}
+
+.audio-volume-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.audio-volume-btn {
+    background: none;
+    border: none;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    transition: all 150ms ease;
+    flex-shrink: 0;
+}
+
+.audio-volume-btn:hover {
+    background: rgba(14, 165, 255, 0.2);
+    transform: scale(1.05);
+}
+
+.audio-volume-slider {
+    position: absolute;
+    bottom: 100%;
+    right: 0;
+    width: 4px;
+    height: 96px;
+    border-radius: 10px;
+    background: rgba(14, 165, 255, 0.12);
+    border: 1px solid rgba(14, 165, 255, 0.2);
+    outline: none;
+    cursor: pointer;
+    -webkit-appearance: slider-vertical;
+    appearance: slider-vertical;
+    writing-mode: bt-lr;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 180ms ease, visibility 180ms ease, transform 180ms ease;
+    transform: translateY(10px);
+}
+
+.audio-volume-slider.audio-volume-visible {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+.audio-volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(14, 165, 255, 0.4);
+    transition: all 150ms ease;
+}
+
+.audio-volume-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 3px 8px rgba(14, 165, 255, 0.6);
+}
+
+.audio-volume-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 6px rgba(14, 165, 255, 0.4);
+    transition: all 150ms ease;
+}
+
+.audio-volume-slider::-moz-range-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 3px 8px rgba(14, 165, 255, 0.6);
+}
+
+.audio-progress-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+}
+
+.audio-progress-bar {
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, rgba(14, 165, 255, 0.15), rgba(14, 165, 255, 0.25));
+    outline: none;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.audio-progress-bar::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(14, 165, 255, 0.4);
+    transition: all 150ms ease;
+}
+
+.audio-progress-bar::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 3px 8px rgba(14, 165, 255, 0.6);
+}
+
+.audio-progress-bar::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 6px rgba(14, 165, 255, 0.4);
+    transition: all 150ms ease;
+}
+
+.audio-progress-bar::-moz-range-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 3px 8px rgba(14, 165, 255, 0.6);
+}
+
+.audio-time {
+    font-size: 11px;
+    color: var(--text);
+    opacity: 0.7;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-weight: 500;
+    min-width: 55px;
+    text-align: right;
+}
+
+.audio-download-icon-btn {
+    background: none;
+    border: none;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    transition: all 150ms ease;
+    flex-shrink: 0;
+}
+
+.audio-download-icon-btn:hover {
+    background: rgba(74, 222, 128, 0.2);
+    transform: translateY(-2px);
+}
+
+.audio-download-icon-btn:active {
+    transform: translateY(0);
+}
+
+.audio-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+}
+
+.audio-name {
+    color: var(--text);
+    font-weight: 500;
+    word-break: break-word;
+    opacity: 0.9;
+}
+
+.audio-size {
+    opacity: 0.6;
+    font-size: 11px;
 }
 
 .wavy-logo {
@@ -775,23 +1152,89 @@ body.sidebar-open .sidebar {
 
 .mic-test-bar-container {
     width: 100%;
-    height: 10px;
-    background: #111;
-    border-radius: 5px;
+    height: 12px;
+    background: rgba(14,165,255,0.05);
+    border-radius: 8px;
     overflow: hidden;
     margin-top: 8px;
-    border: 1px solid var(--muted);
+    border: 1px solid rgba(14,165,255,0.2);
 }
 
 .mic-test-bar-fill {
     height: 100%;
     width: 0%;
-    background: var(--accent);
-    transition: width 0.05s linear;
+    background: linear-gradient(90deg, var(--accent), #4ade80);
+    transition: width 0.05s linear, background 0.2s ease;
 }
 
 .range-slider {
     width: 100%;
-    margin-top: 5px;
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, rgba(14,165,255,0.1), rgba(14,165,255,0.2));
+    outline: none;
     cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    margin-top: 12px;
+}
+
+.range-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), #4ade80);
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(14,165,255,0.3), inset 0 1px 0 rgba(255,255,255,0.2);
+    border: 2px solid rgba(255,255,255,0.1);
+    transition: all 150ms ease;
+}
+
+.range-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+    box-shadow: 0 4px 12px rgba(14,165,255,0.5), inset 0 1px 0 rgba(255,255,255,0.2);
+}
+
+.range-slider::-webkit-slider-thumb:active {
+    transform: scale(1.05);
+}
+
+.range-slider::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), #4ade80);
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(14,165,255,0.3), inset 0 1px 0 rgba(255,255,255,0.2);
+    border: 2px solid rgba(255,255,255,0.1);
+    transition: all 150ms ease;
+}
+
+.range-slider::-moz-range-thumb:hover {
+    transform: scale(1.15);
+    box-shadow: 0 4px 12px rgba(14,165,255,0.5), inset 0 1px 0 rgba(255,255,255,0.2);
+}
+
+.range-slider::-moz-range-thumb:active {
+    transform: scale(1.05);
+}
+
+/* Modal text improvements */
+.modal p {
+    margin: 0 0 12px 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: rgba(230, 238, 243, 0.85);
+}
+
+.modal p:last-child {
+    margin-bottom: 0;
+}
+
+/* Modal button improvements */
+.modal button {
+    font-weight: 500;
+    letter-spacing: 0.3px;
 }

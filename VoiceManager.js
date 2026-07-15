@@ -4,12 +4,77 @@ class VoiceManager {
         this.state = state;
         this.modal = modal;
         this.auth  = auth;
+        this.micChannel = null;
+        this.micPermissionQuery = null;
 
         if (!document.getElementById('webrtc-audio-container')) {
             const ac = document.createElement('div');
             ac.id = 'webrtc-audio-container';
             document.body.appendChild(ac);
         }
+
+        // Setup microphone sync
+        this.setupMicrophoneSync();
+    }
+
+    setupMicrophoneSync() {
+        // BroadcastChannel for cross-tab communication
+        if (typeof BroadcastChannel !== 'undefined') {
+            try {
+                this.micChannel = new BroadcastChannel('konsmon_mic_settings');
+                this.micChannel.onmessage = (event) => {
+                    const { type, value } = event.data;
+                    if (type === 'mic_id_changed') {
+                        this.state.currentMicId = value;
+                        localStorage.setItem('konsmon_mic_id', value);
+                        console.log('[SYNC] Microphone synced from another tab:', value);
+                    } else if (type === 'mic_sensitivity_changed') {
+                        this.state.micSensitivity = value;
+                        localStorage.setItem('konsmon_mic_sens', value);
+                        console.log('[SYNC] Microphone sensitivity synced from another tab:', value);
+                    }
+                };
+            } catch (e) {
+                console.warn('BroadcastChannel not available:', e);
+            }
+        }
+
+        // Fallback: Listen for storage events from other tabs
+        window.addEventListener('storage', (event) => {
+            if (event.key === 'konsmon_mic_id' && event.newValue) {
+                this.state.currentMicId = event.newValue;
+                console.log('[SYNC] Microphone synced via storage event:', event.newValue);
+            } else if (event.key === 'konsmon_mic_sens' && event.newValue) {
+                this.state.micSensitivity = parseInt(event.newValue);
+                console.log('[SYNC] Microphone sensitivity synced via storage event:', event.newValue);
+            }
+        });
+
+        // Monitor browser microphone permissions
+        if (navigator.permissions && navigator.permissions.query) {
+            navigator.permissions.query({ name: 'microphone' }).then(permissionStatus => {
+                this.micPermissionQuery = permissionStatus;
+                
+                permissionStatus.onchange = () => {
+                    console.log('[SYNC] Microphone permission changed:', permissionStatus.state);
+                    // If permission was denied, notify the user
+                    if (permissionStatus.state === 'denied' && this.state.currentVoiceChatId) {
+                        console.warn('[SYNC] Microphone permission denied. Leaving voice chat.');
+                    }
+                };
+            }).catch(e => {
+                console.warn('Microphone permission query not available:', e);
+            });
+        }
+
+        // Listen for device changes (added/removed microphones)
+        navigator.mediaDevices.addEventListener('devicechange', () => {
+            console.log('[SYNC] Audio devices changed');
+            if (this.state.currentVoiceChatId) {
+                // Optionally rejoin with the newly available device
+                console.log('[SYNC] Audio devices changed while in voice chat');
+            }
+        });
     }
 
     // Identity helpers
@@ -523,7 +588,15 @@ class VoiceManager {
                 if (d.deviceId === this.state.currentMicId) opt.selected = true;
                 sel.appendChild(opt);
             });
-            sel.onchange = () => { tempMicId = sel.value; localStorage.setItem('konsmon_mic_id', tempMicId); this._startMicTest(tempMicId); };
+            sel.onchange = () => { 
+                tempMicId = sel.value; 
+                localStorage.setItem('konsmon_mic_id', tempMicId);
+                // Broadcast change to other tabs
+                if (this.micChannel) {
+                    this.micChannel.postMessage({ type: 'mic_id_changed', value: tempMicId });
+                }
+                this._startMicTest(tempMicId); 
+            };
         } catch (e) {
             sel.innerHTML = '<option>Error loading devices</option>';
         }
@@ -534,6 +607,10 @@ class VoiceManager {
             this.state.micSensitivity = parseInt(slider.value);
             valDisplay.textContent = this.state.micSensitivity;
             localStorage.setItem('konsmon_mic_sens', this.state.micSensitivity);
+            // Broadcast change to other tabs
+            if (this.micChannel) {
+                this.micChannel.postMessage({ type: 'mic_sensitivity_changed', value: this.state.micSensitivity });
+            }
         };
 
         this._startMicTest(this.state.currentMicId);
