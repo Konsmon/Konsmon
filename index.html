@@ -9,7 +9,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Konsmon Chat </title>
     <link rel="icon" href="gfx/radioactive_icon.png" type="image/x-icon">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=2.2">
 
 
     <!-- Firebase SDK -->
@@ -58,7 +58,7 @@
                             <button id="createQuick" class="btn btn-primary">Create new server</button>
                             <div style="align-self:center">— or —</div>
                             <div style="display:flex;gap:6px;align-items:center">
-                                <input id="searchInput" placeholder="Search..." />
+                                <input id="searchInput" name="server-search" placeholder="Search..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
                                 <button id="searchBtn" class="btn btn-ghost">Search</button>
                             </div>
                         </div>
@@ -108,15 +108,15 @@
 
 
 
-    <!-- Load order -->
-    <script src="config.js"></script>
-    <script src="AppState.js"></script>
-    <script src="CryptoManager.js"></script>
-    <script src="ModalManager.js"></script>
-    <script src="AuthManager.js"></script>
-    <script src="ChatManager.js"></script>
-    <script src="VoiceManager.js"></script>
-    <script src="StreamManager.js"></script>
-    <script src="main.js"></script>
+    <!-- Load order (bump ?v= on deploy) -->
+    <script src="config.js?v=2.2"></script>
+    <script src="AppState.js?v=2.2"></script>
+    <script src="CryptoManager.js?v=2.2"></script>
+    <script src="ModalManager.js?v=2.2"></script>
+    <script src="AuthManager.js?v=2.2"></script>
+    <script src="ChatManager.js?v=2.2"></script>
+    <script src="VoiceManager.js?v=2.2"></script>
+    <script src="StreamManager.js?v=2.2"></script>
+    <script src="main.js?v=2.2"></script>
 </body>
 </html>

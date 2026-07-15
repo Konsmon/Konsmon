@@ -1,6 +1,7 @@
 // Message encryption (AES-GCM)
 const CryptoManager = {
     KEY_LENGTH: 64,
+    KEY_CHECK: 'KONSMON_KEY_OK',
 
     // Random 64-hex key
     generateKeyHex() {
@@ -18,7 +19,15 @@ const CryptoManager = {
     },
 
     setServerKey(serverId, hex) {
+        if (!hex) {
+            localStorage.removeItem('konsmon_enc_key_' + serverId);
+            return;
+        }
         localStorage.setItem('konsmon_enc_key_' + serverId, hex);
+    },
+
+    clearServerKey(serverId) {
+        localStorage.removeItem('konsmon_enc_key_' + serverId);
     },
 
     _hexToBytes(hex) {
@@ -50,6 +59,21 @@ const CryptoManager = {
         const iv  = crypto.getRandomValues(new Uint8Array(12));
         const ct  = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(text));
         return this._bytesToB64(iv) + ':' + this._bytesToB64(new Uint8Array(ct));
+    },
+
+    // Key check payload
+    async makeKeyCheck(keyHex) {
+        return this.encryptText(keyHex, this.KEY_CHECK);
+    },
+
+    // Verify key correctness
+    async verifyKey(keyHex, checkPayload) {
+        if (!checkPayload) return true;
+        try {
+            return (await this.decryptText(keyHex, checkPayload)) === this.KEY_CHECK;
+        } catch (e) {
+            return false;
+        }
     },
 
     // Throws on wrong key
