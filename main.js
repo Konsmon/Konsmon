@@ -28,6 +28,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const bRefresh = document.getElementById('btnRefresh');
     const logo     = document.getElementById('siteLogo');
 
+    if (logo) logo.textContent = 'KONSMON CHAT WEBSITE v' + window.VERSION;
+
     if (bCreate)  bCreate.onclick  = () => app.chat.openCreateModal();
     if (bQuick)   bQuick.onclick   = () => app.chat.openCreateModal();
     if (bSignin)  bSignin.onclick  = () => app.auth.openLoginModal();
