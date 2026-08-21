@@ -2,6 +2,7 @@
 const AppState = {
     // Firebase refs
     db: null,
+    storage: null,
     usersRef: null,
     serversRef: null,
     voiceChatsRef: null,

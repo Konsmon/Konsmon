@@ -21,6 +21,8 @@ class ChatManager {
         this.selectedFileName    = null;
         this.selectedFileType    = null;
         this.selectedFileSize    = null;
+        this.selectedFile        = null;
+        this._previewUrl         = null;
         this.MAX_FILE_SIZE       = 10000 * 1024;
         this.NAME_MAX            = 25;
         this._nameCache          = {};
@@ -87,6 +89,8 @@ class ChatManager {
         if (imageInput) {
             imageInput.onchange = (e) => this._handleFileSelect(e);
         }
+
+        this._bindDropZone();
 
         if (this.messageInput) {
             this.messageInput.addEventListener('keydown', e => {
@@ -807,10 +811,10 @@ class ChatManager {
                 this._renderEncrypted(bubble, m.enc, chatServerId);
             } else if (m.text) {
                 this._renderTextWithLinks(bubble, m.text);
-            } else if (m.imageBase64) {
-                this._renderImage(bubble, m.imageBase64, initialLoad);
-            } else if (m.fileBase64) {
-                this._renderFile(bubble, m.fileBase64, m.fileName, m.fileSize);
+            } else if (m.imageUrl || m.imageBase64) {
+                this._renderImage(bubble, m.imageUrl || m.imageBase64, initialLoad);
+            } else if (m.fileUrl || m.fileBase64) {
+                this._renderFile(bubble, m.fileUrl || m.fileBase64, m.fileName, m.fileSize);
             }
 
             // Delete own message
@@ -880,7 +884,7 @@ class ChatManager {
 
     async _actuallySendMessage() {
         const text = String(this.messageInput?.value || '').trim();
-        if (!text && !this.selectedImageBase64 && !this.selectedFileBase64) return;
+        if (!text && !this.selectedFile && !this.selectedImageBase64 && !this.selectedFileBase64) return;
 
         const nick = this.auth.getDisplayNick();
 
@@ -910,12 +914,38 @@ class ChatManager {
             outText = null;
         }
 
+        let imageUrl     = null;
+        let fileUrl      = null;
+        let imageBase64  = this.selectedImageBase64;
+        let fileBase64   = this.selectedFileBase64;
+
+        if (this.selectedFile) {
+            try {
+                const url = await this._uploadToStorage(this.selectedFile);
+                if (this.selectedFile.type.startsWith('image/')) imageUrl = url;
+                else fileUrl = url;
+                imageBase64 = null;
+                fileBase64  = null;
+            } catch (err) {
+                console.warn('[CHAT] Storage upload failed:', err);
+                if (this.selectedFile.size > this.MAX_FILE_SIZE) {
+                    this.modal.alert('Storage upload failed. Large files need Firebase Storage write access.');
+                    return;
+                }
+                const dataUrl = await this._fileToDataUrl(this.selectedFile);
+                if (this.selectedFile.type.startsWith('image/')) imageBase64 = dataUrl;
+                else fileBase64 = dataUrl;
+            }
+        }
+
         const msgData = {
             nickname:    nick,
             text:        outText,
             enc:         outEnc,
-            imageBase64: this.selectedImageBase64,
-            fileBase64:  this.selectedFileBase64,
+            imageUrl,
+            fileUrl,
+            imageBase64,
+            fileBase64,
             fileName:    this.selectedFileName,
             fileSize:    this.selectedFileSize,
             time:        t,
@@ -925,12 +955,7 @@ class ChatManager {
 
         this.state.db.ref(`chats/${this.state.currentChatId}/messages`).push(msgData).then(() => {
             if (this.messageInput) this.messageInput.value = '';
-            this.selectedImageBase64 = null;
-            this.selectedFileBase64  = null;
-            this.selectedFileName    = null;
-            this.selectedFileSize    = null;
-            const ex = document.querySelector('#messageInput + img, #messageInput + .file-preview');
-            if (ex) ex.remove();
+            this._clearSelectedFile();
             if (mentionedUserIds.length > 0) {
                 this._addPingsForUsers(this.state.currentChatId, mentionedUserIds, nick, this.state.currentUser?.uid);
             }
@@ -940,37 +965,103 @@ class ChatManager {
     // File select
     _handleFileSelect(e) {
         const file = e.target.files[0];
-        if (!file) return;
-        if (file.size > this.MAX_FILE_SIZE) { this.modal.alert('File too large (max 10Mb)'); e.target.value = ''; return; }
+        e.target.value = '';
+        if (file) this._attachFile(file);
+    }
 
+    // Drag-drop zone
+    _bindDropZone() {
+        const overlay = document.getElementById('dropOverlay');
+        let dragCount = 0;
+        const hasFiles = (e) => e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files');
+        const hide = () => {
+            dragCount = 0;
+            if (overlay) overlay.classList.remove('show');
+        };
+
+        document.addEventListener('dragenter', (e) => {
+            if (!hasFiles(e)) return;
+            e.preventDefault();
+            dragCount++;
+            if (this.state.currentChatId && overlay) overlay.classList.add('show');
+        });
+        document.addEventListener('dragleave', (e) => {
+            if (!hasFiles(e)) return;
+            dragCount = Math.max(0, dragCount - 1);
+            if (dragCount === 0 && overlay) overlay.classList.remove('show');
+        });
+        document.addEventListener('dragover', (e) => {
+            if (!hasFiles(e)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+        });
+        document.addEventListener('drop', (e) => {
+            if (!hasFiles(e)) return;
+            e.preventDefault();
+            hide();
+            const file = e.dataTransfer.files && e.dataTransfer.files[0];
+            if (!file) return;
+            if (!this.state.currentChatId) { this.modal.alert('Join a chat first'); return; }
+            this._attachFile(file);
+        });
+    }
+
+    _attachFile(file) {
+        if (!file) return;
+        if (file.size > this.MAX_FILE_SIZE && !this.auth.isAdmin()) {
+            this.modal.alert('File too large (max 10Mb)');
+            return;
+        }
+
+        this._clearSelectedFile();
+        this.selectedFile     = file;
+        this.selectedFileName = file.name;
+        this.selectedFileType = file.type;
+        this.selectedFileSize = file.size;
+
+        if (file.type.startsWith('image/')) {
+            this._previewUrl = URL.createObjectURL(file);
+            const p = document.createElement('img');
+            p.src = this._previewUrl;
+            p.style.cssText = 'max-width:100px;margin-top:4px;';
+            this.messageInput?.insertAdjacentElement('afterend', p);
+        } else {
+            const d = document.createElement('div');
+            d.className   = 'file-preview';
+            d.textContent = `${file.name} (${this._formatFileSize(file.size)})`;
+            this.messageInput?.insertAdjacentElement('afterend', d);
+        }
+    }
+
+    _clearSelectedFile() {
+        this.selectedFile        = null;
         this.selectedImageBase64 = null;
         this.selectedFileBase64  = null;
         this.selectedFileName    = null;
         this.selectedFileType    = null;
         this.selectedFileSize    = null;
-        const existing = document.querySelector('#messageInput + img, #messageInput + .file-preview');
-        if (existing) existing.remove();
+        if (this._previewUrl) { URL.revokeObjectURL(this._previewUrl); this._previewUrl = null; }
+        const ex = document.querySelector('#messageInput + img, #messageInput + .file-preview');
+        if (ex) ex.remove();
+    }
 
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            if (file.type.startsWith('image/')) {
-                this.selectedImageBase64 = ev.target.result;
-                const p = document.createElement('img');
-                p.src = this.selectedImageBase64;
-                p.style.cssText = 'max-width:100px;margin-top:4px;';
-                this.messageInput?.insertAdjacentElement('afterend', p);
-            } else {
-                this.selectedFileBase64 = ev.target.result;
-                this.selectedFileName   = file.name;
-                this.selectedFileType   = file.type;
-                this.selectedFileSize   = file.size;
-                const d = document.createElement('div');
-                d.className   = 'file-preview';
-                d.textContent = `${file.name} (${this._formatFileSize(file.size)})`;
-                this.messageInput?.insertAdjacentElement('afterend', d);
-            }
-        };
-        reader.readAsDataURL(file);
+    _fileToDataUrl(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload  = (ev) => resolve(ev.target.result);
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(file);
+        });
+    }
+
+    // Storage upload
+    async _uploadToStorage(file) {
+        if (!this.state.storage) throw new Error('No storage');
+        const chatId = this.state.currentChatId || 'misc';
+        const safe   = String(file.name || 'file').replace(/[^\w.\-]+/g, '_').slice(0, 80);
+        const path   = `uploads/${chatId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${safe}`;
+        const snap   = await this.state.storage.ref(path).put(file);
+        return snap.ref.getDownloadURL();
     }
 
     _formatFileSize(bytes) {
@@ -1019,11 +1110,25 @@ class ChatManager {
         img.style.cursor = 'zoom-in';
         img.addEventListener('click', e => {
             e.stopPropagation();
-            document.getElementById('modalContent').innerHTML =
-                `<div class="modal-viewer"><a class="modal-download" href="${src}" download="img.png">Download</a><img src="${src}" class="modal-image"/></div>`;
+            const viewer = document.createElement('div');
+            viewer.className = 'modal-viewer';
+            const a = document.createElement('a');
+            a.className = 'modal-download';
+            a.href = src;
+            a.target = '_blank';
+            a.rel = 'noopener';
+            a.download = 'img.png';
+            a.textContent = src.startsWith('http') ? 'Open / Copy link' : 'Download';
+            const big = document.createElement('img');
+            big.src = src;
+            big.className = 'modal-image';
+            viewer.appendChild(a);
+            viewer.appendChild(big);
+            const mc = document.getElementById('modalContent');
+            mc.innerHTML = '';
+            mc.appendChild(viewer);
             document.getElementById('modal').style.display = 'flex';
-            const modalImg = document.getElementById('modalContent').querySelector('.modal-image');
-            if (modalImg) modalImg.onload = () => this.modal._adjustImage();
+            big.onload = () => this.modal._adjustImage();
         });
         img.onload = () => {
             if (initialLoad || (this.messagesEl.scrollHeight - this.messagesEl.scrollTop - this.messagesEl.clientHeight < 300)) {
@@ -1056,9 +1161,15 @@ class ChatManager {
 
         const link      = document.createElement('a');
         link.href       = src;
-        link.download   = fileName || 'file';
         link.className  = 'file-msg';
-        link.title      = 'Download file';
+        if (src.startsWith('http')) {
+            link.target = '_blank';
+            link.rel    = 'noopener';
+            link.title  = 'Open file — right-click to copy link';
+        } else {
+            link.download = fileName || 'file';
+            link.title    = 'Download file';
+        }
 
         const icon = document.createElement('img');
         icon.src       = 'gfx/file.png';
@@ -1197,12 +1308,13 @@ class ChatManager {
         const downloadBtn = document.createElement('button');
         downloadBtn.className = 'audio-download-icon-btn';
         downloadBtn.textContent = '↓';
-        downloadBtn.title = 'Download audio file';
+        downloadBtn.title = src.startsWith('http') ? 'Open / copy audio link' : 'Download audio file';
         downloadBtn.onclick = (e) => {
             e.stopPropagation();
             const link = document.createElement('a');
             link.href = src;
-            link.download = fileName || 'audio';
+            if (src.startsWith('http')) { link.target = '_blank'; link.rel = 'noopener'; }
+            else link.download = fileName || 'audio';
             link.click();
         };
 

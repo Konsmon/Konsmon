@@ -7,6 +7,7 @@ AppState.db            = firebase.database();
 AppState.usersRef      = AppState.db.ref('users');
 AppState.serversRef    = AppState.db.ref('servers');
 AppState.voiceChatsRef = AppState.db.ref('voice_chats');
+try { AppState.storage = firebase.storage(); } catch (e) { AppState.storage = null; }
 
 // Manager instances
 const app = {};

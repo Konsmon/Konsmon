@@ -9,13 +9,14 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Konsmon Chat </title>
     <link rel="icon" href="gfx/radioactive_icon.png" type="image/x-icon">
-    <script>window.VERSION = '2.2';</script>
+    <script>window.VERSION = '2.2.2';</script>
     <script>document.write('<link rel="stylesheet" href="style.css?v=' + VERSION + '">');</script>
 
 
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-storage-compat.js"></script>
 
 
 </head>
@@ -80,6 +81,7 @@
                 </div>
 
                 <div id="chatArea" style="display:none;flex-direction:column;height:100%">
+                    <div id="dropOverlay" class="drop-overlay">Drop file here</div>
                     <div class="chat-top">
                         <div>
                             <strong id="chatTitle">—</strong>

@@ -139,6 +139,30 @@ html, body {
     flex-direction: column;
     min-height: 0;
     height: 100%;
+    position: relative;
+    overflow: visible;
+}
+
+/* Drop overlay */
+.drop-overlay {
+    display: none;
+    position: absolute;
+    inset: -3px;
+    z-index: 40;
+    align-items: center;
+    justify-content: center;
+    background: rgba(14, 165, 255, 0.12);
+    border: 2px dashed var(--accent);
+    border-radius: 8px;
+    color: var(--accent);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    pointer-events: none;
+}
+
+.drop-overlay.show {
+    display: flex;
 }
 
 .welcome {
