@@ -36,9 +36,13 @@ const CryptoManager = {
         return out;
     },
 
+    // Chunked for big files
     _bytesToB64(bytes) {
         let bin = '';
-        bytes.forEach(b => bin += String.fromCharCode(b));
+        const CHUNK = 0x8000;
+        for (let i = 0; i < bytes.length; i += CHUNK) {
+            bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+        }
         return btoa(bin);
     },
 
@@ -59,6 +63,24 @@ const CryptoManager = {
         const iv  = crypto.getRandomValues(new Uint8Array(12));
         const ct  = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(text));
         return this._bytesToB64(iv) + ':' + this._bytesToB64(new Uint8Array(ct));
+    },
+
+    // Encrypt raw bytes
+    async encryptBytes(keyHex, buffer) {
+        const key = await this._importKey(keyHex);
+        const iv  = crypto.getRandomValues(new Uint8Array(12));
+        const ct  = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, buffer);
+        return this._bytesToB64(iv) + ':' + this._bytesToB64(new Uint8Array(ct));
+    },
+
+    // Decrypt to bytes
+    async decryptBytes(keyHex, payload) {
+        const sep = payload.indexOf(':');
+        if (sep < 0) throw new Error('Bad payload');
+        const iv  = this._b64ToBytes(payload.slice(0, sep));
+        const ct  = this._b64ToBytes(payload.slice(sep + 1));
+        const key = await this._importKey(keyHex);
+        return crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
     },
 
     // Key check payload

@@ -259,9 +259,10 @@ html, body {
     .message img {
         display: block;
         max-width: 320px;
-        max-height: 420px;
+        max-height: 300px;
         width: auto;
         height: auto;
+        object-fit: contain;
         border-radius: 8px;
         margin-top: 6px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.25);
@@ -282,6 +283,13 @@ html, body {
     font-size: 12px;
     opacity: 0.55;
     word-break: break-all;
+}
+
+/* Attachment decrypt */
+.file-decrypting {
+    font-size: 12px;
+    opacity: 0.6;
+    margin-top: 4px;
 }
 
 /* Key display */
@@ -618,14 +626,77 @@ select:hover {
         opacity: 1;
     }
 
-.file-preview {
-    display: inline-block;
-    background: rgba(255,255,255,0.03);
-    color: var(--text);
-    padding: 6px 8px;
-    border-radius: 8px;
-    margin-top: 6px;
+/* Attachment preview */
+.attach-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px;
+}
+
+.attach-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 280px;
+    padding: 8px 10px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+}
+
+.attach-thumb {
+    width: 48px;
+    height: 48px;
+    object-fit: cover;
+    border-radius: 6px;
+    flex-shrink: 0;
+}
+
+.attach-icon {
+    width: 30px;
+    height: 36px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
+.attach-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.attach-name {
     font-size: 13px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.attach-size {
+    font-size: 11px;
+    opacity: 0.6;
+}
+
+.attach-remove {
+    margin-left: auto;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+    padding: 2px;
+    opacity: 0.7;
+}
+
+    .attach-remove:hover { opacity: 1; }
+
+.attach-status {
+    align-self: center;
+    font-size: 12px;
+    opacity: 0.75;
 }
 
 .file-link {
@@ -647,32 +718,71 @@ select:hover {
     display: flex;
     align-items: center;
     gap: 10px;
+    max-width: 320px;
     padding: 1px 1px;
     text-decoration: none;
     color: var(--text);
     cursor: pointer;
 }
 
-.file-icon {
+.message .file-icon {
     width: 30px;
     height: 36px;
+    min-width: 30px;
+    max-width: 30px;
+    max-height: 36px;
     object-fit: contain;
     flex-shrink: 0;
+    margin-top: 0;
+    box-shadow: none;
 }
 
 .file-info {
     display: flex;
     flex-direction: column;
+    min-width: 0;
     overflow: hidden;
 }
 
 .file-name {
     color: #6366f1;
     font-size: 14px;
+    max-width: 260px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+/* Video message */
+.video-msg {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-width: 360px;
+    margin-top: 6px;
+}
+
+.video-player {
+    width: 100%;
+    max-height: 260px;
+    background: #000;
+    border-radius: 8px;
+}
+
+.video-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.video-download {
+    margin-left: auto;
+    color: #6366f1;
+    text-decoration: none;
+}
+
+    .video-download:hover { text-decoration: underline; }
 
     .file-msg:hover .file-name {
         text-decoration: underline;

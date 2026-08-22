@@ -1,6 +1,6 @@
 // config.js
 // VERSION set in index.html (window.VERSION)
-if (typeof window.VERSION === 'undefined') window.VERSION = '2.2.2';
+if (typeof window.VERSION === 'undefined') window.VERSION = '2.2.3';
 
 const firebaseConfig = {
     apiKey:            'AIzaSyBeDzJgPfga58CNlEFriKkxVBG-d04JXO4',

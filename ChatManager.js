@@ -23,7 +23,10 @@ class ChatManager {
         this.selectedFileSize    = null;
         this.selectedFile        = null;
         this._previewUrl         = null;
+        this._blobUrls           = [];
         this.MAX_FILE_SIZE       = 10000 * 1024;
+        this.MAX_ENC_FILE_SIZE   = 6 * 1024 * 1024;
+        this.NAME_TRIM           = 20;
         this.NAME_MAX            = 25;
         this._nameCache          = {};
 
@@ -725,6 +728,7 @@ class ChatManager {
         this.welcomeArea.style.display = 'none';
         this.chatArea.style.display    = 'flex';
         this.messagesEl.innerHTML      = '';
+        this._revokeBlobUrls();
 
         // Loading indicator
         console.log(`%c[CHAT] Loading chat: ${id}`, 'color:#0ea5ff;font-weight:bold;');
@@ -807,10 +811,17 @@ class ChatManager {
 
             const bubble = document.createElement('div'); bubble.className = 'message';
 
-            if (m.enc) {
-                this._renderEncrypted(bubble, m.enc, chatServerId);
-            } else if (m.text) {
-                this._renderTextWithLinks(bubble, m.text);
+            // Text part
+            if (m.enc || m.text) {
+                const textEl = document.createElement('div');
+                bubble.appendChild(textEl);
+                if (m.enc) this._renderEncrypted(textEl, m.enc, chatServerId);
+                else       this._renderTextWithLinks(textEl, m.text);
+            }
+
+            // Attachment part
+            if (m.encFile) {
+                this._renderEncryptedFile(bubble, m, chatServerId, initialLoad);
             } else if (m.imageUrl || m.imageBase64) {
                 this._renderImage(bubble, m.imageUrl || m.imageBase64, initialLoad);
             } else if (m.fileUrl || m.fileBase64) {
@@ -831,12 +842,14 @@ class ChatManager {
                 trash.onclick = (e) => {
                     e.stopPropagation();
                     if (!confirm('Delete message?')) return;
-                    this.state.db.ref(`users/${this.state.currentUser.uid}`).once('value').then(snapUser => {
+                    this.state.db.ref(`users/${this.state.currentUser.uid}`).once('value').then(async snapUser => {
                         const isAdmin = snapUser.val()?.admin === 1;
                         if (isAdmin || m.userId === this.state.currentUser.uid) {
+                            await this._deleteStorageFile(m);
                             this.state.db.ref(`chats/${this.state.currentChatId}/messages/${msgId}`)
                                 .remove()
-                                .then(() => { msgWrap.remove(); removeDateSeparatorIfEmpty(dateOnly); });
+                                .then(() => { msgWrap.remove(); removeDateSeparatorIfEmpty(dateOnly); })
+                                .catch(err => this.modal.alert('Delete failed: ' + err.message));
                         } else {
                             this.modal.alert('You can delete only your messages.');
                         }
@@ -870,6 +883,8 @@ class ChatManager {
         this.state.currentChatId  = null;
         this.state.currentChatRef = null;
         this.messagesEl.innerHTML = '';
+        this._revokeBlobUrls();
+        this._clearSelectedFile();
         this.chatArea.style.display    = 'none';
         this.welcomeArea.style.display = 'block';
         this.chatTitle.textContent    = '—';
@@ -894,72 +909,104 @@ class ChatManager {
         const mentionedUserIds = await this._resolveMentionedUserIds(text);
 
         // Encrypt if enabled
-        let outText = text || null;
-        let outEnc  = null;
+        let outText  = text || null;
+        let outEnc   = null;
+        let encKey   = null;
         const sid = this._findServerIdByChatId(this.state.currentChatId);
         const srv = sid ? this.state.serversCache[sid] : null;
-        if (srv?.encrypted && text) {
-            const key = CryptoManager.getServerKey(sid);
-            if (!key) {
+
+        if (srv?.encrypted) {
+            encKey = CryptoManager.getServerKey(sid);
+            if (!encKey) {
                 this.modal.alert('This server is encrypted. Click the server name to enter the encryption key first.');
                 return;
             }
-            if (!(await CryptoManager.verifyKey(key, srv.encCheck))) {
-                localStorage.removeItem('konsmon_enc_key_' + sid);
+            if (!(await CryptoManager.verifyKey(encKey, srv.encCheck))) {
+                CryptoManager.clearServerKey(sid);
                 this.modal.alert('Wrong encryption key saved locally. Enter the correct key first.');
                 this._promptServerKey(sid);
                 return;
             }
-            outEnc  = await CryptoManager.encryptText(key, text);
-            outText = null;
-        }
-
-        let imageUrl     = null;
-        let fileUrl      = null;
-        let imageBase64  = this.selectedImageBase64;
-        let fileBase64   = this.selectedFileBase64;
-
-        if (this.selectedFile) {
-            try {
-                const url = await this._uploadToStorage(this.selectedFile);
-                if (this.selectedFile.type.startsWith('image/')) imageUrl = url;
-                else fileUrl = url;
-                imageBase64 = null;
-                fileBase64  = null;
-            } catch (err) {
-                console.warn('[CHAT] Storage upload failed:', err);
-                if (this.selectedFile.size > this.MAX_FILE_SIZE) {
-                    this.modal.alert('Storage upload failed. Large files need Firebase Storage write access.');
-                    return;
-                }
-                const dataUrl = await this._fileToDataUrl(this.selectedFile);
-                if (this.selectedFile.type.startsWith('image/')) imageBase64 = dataUrl;
-                else fileBase64 = dataUrl;
+            if (text) {
+                outEnc  = await CryptoManager.encryptText(encKey, text);
+                outText = null;
             }
         }
 
         const msgData = {
-            nickname:    nick,
-            text:        outText,
-            enc:         outEnc,
-            imageUrl,
-            fileUrl,
-            imageBase64,
-            fileBase64,
-            fileName:    this.selectedFileName,
-            fileSize:    this.selectedFileSize,
-            time:        t,
-            createdAt:   Date.now(),
-            userId:      this.state.currentUser ? this.state.currentUser.uid : null,
+            nickname:  nick,
+            text:      outText,
+            enc:       outEnc,
+            time:      t,
+            createdAt: Date.now(),
+            userId:    this.state.currentUser ? this.state.currentUser.uid : null,
         };
 
-        this.state.db.ref(`chats/${this.state.currentChatId}/messages`).push(msgData).then(() => {
+        const file = this.selectedFile;
+        if (file) {
+            try {
+                if (encKey) {
+                    // Encrypted: store in database
+                    this._setSendStatus('Encrypting...');
+                    const buf = await file.arrayBuffer();
+                    msgData.encFile     = await CryptoManager.encryptBytes(encKey, buf);
+                    msgData.encFileName = await CryptoManager.encryptText(encKey, file.name);
+                    msgData.fileType    = file.type || 'application/octet-stream';
+                    msgData.fileSize    = file.size;
+                } else {
+                    // Public: upload to storage
+                    this._setSendStatus('Uploading 0%');
+                    const up = await this._uploadToStorage(file, pct => this._setSendStatus(`Uploading ${pct}%`));
+                    if (file.type.startsWith('image/')) msgData.imageUrl = up.url;
+                    else msgData.fileUrl = up.url;
+                    msgData.filePath = up.path;
+                    msgData.fileName = file.name;
+                    msgData.fileType = file.type || 'application/octet-stream';
+                    msgData.fileSize = file.size;
+                }
+            } catch (err) {
+                console.error('[CHAT] Attachment failed:', err);
+                this._setSendStatus(null);
+                this.modal.alert('Attachment failed: ' + (err?.message || err));
+                return;
+            }
+        }
+
+        this._setSendStatus('Sending...');
+        try {
+            await this.state.db.ref(`chats/${this.state.currentChatId}/messages`).push(msgData);
             if (this.messageInput) this.messageInput.value = '';
             this._clearSelectedFile();
             if (mentionedUserIds.length > 0) {
                 this._addPingsForUsers(this.state.currentChatId, mentionedUserIds, nick, this.state.currentUser?.uid);
             }
-        });
+        } catch (err) {
+            console.error('[CHAT] Failed to send message:', err);
+            this.modal.alert('Failed to send message: ' + (err?.message || err));
+        } finally {
+            this._setSendStatus(null);
+        }
+    }
+
+    // Upload / send status
+    _setSendStatus(label) {
+        const sendBtn = document.getElementById('sendBtn');
+        const bar     = document.getElementById('attachBar');
+
+        if (sendBtn) {
+            sendBtn.disabled    = !!label;
+            sendBtn.textContent = label ? '...' : 'Send';
+        }
+        if (!bar) return;
+
+        let el = bar.querySelector('.attach-status');
+        if (!label) { if (el) el.remove(); return; }
+        if (!el) {
+            el = document.createElement('div');
+            el.className = 'attach-status';
+            bar.appendChild(el);
+        }
+        el.textContent = label;
     }
 
     // File select
@@ -1008,8 +1055,15 @@ class ChatManager {
 
     _attachFile(file) {
         if (!file) return;
-        if (file.size > this.MAX_FILE_SIZE && !this.auth.isAdmin()) {
-            this.modal.alert('File too large (max 10Mb)');
+
+        const encServer = this._isEncryptedChat();
+        const limit     = encServer ? this.MAX_ENC_FILE_SIZE : this.MAX_FILE_SIZE;
+        const canBypass = this.auth.isAdmin() && !encServer;
+
+        if (file.size > limit && !canBypass) {
+            this.modal.alert(encServer
+                ? 'Encrypted servers store files in the database (max 6Mb).'
+                : 'File too large (max 10Mb)');
             return;
         }
 
@@ -1018,19 +1072,56 @@ class ChatManager {
         this.selectedFileName = file.name;
         this.selectedFileType = file.type;
         this.selectedFileSize = file.size;
+        this._renderAttachBar(file);
+    }
+
+    // Attach preview + remove
+    _renderAttachBar(file) {
+        const bar = document.getElementById('attachBar');
+        if (!bar) return;
+        bar.innerHTML = '';
+
+        const card = document.createElement('div');
+        card.className = 'attach-card';
 
         if (file.type.startsWith('image/')) {
             this._previewUrl = URL.createObjectURL(file);
-            const p = document.createElement('img');
-            p.src = this._previewUrl;
-            p.style.cssText = 'max-width:100px;margin-top:4px;';
-            this.messageInput?.insertAdjacentElement('afterend', p);
+            const thumb = document.createElement('img');
+            thumb.src       = this._previewUrl;
+            thumb.className = 'attach-thumb';
+            card.appendChild(thumb);
         } else {
-            const d = document.createElement('div');
-            d.className   = 'file-preview';
-            d.textContent = `${file.name} (${this._formatFileSize(file.size)})`;
-            this.messageInput?.insertAdjacentElement('afterend', d);
+            const icon = document.createElement('img');
+            icon.src       = 'gfx/file.png';
+            icon.alt       = 'file';
+            icon.className = 'attach-icon';
+            card.appendChild(icon);
         }
+
+        const info = document.createElement('div');
+        info.className = 'attach-info';
+
+        const nameEl = document.createElement('span');
+        nameEl.className   = 'attach-name';
+        nameEl.textContent = this._shortName(file.name);
+        nameEl.title       = file.name;
+
+        const sizeEl = document.createElement('span');
+        sizeEl.className   = 'attach-size';
+        sizeEl.textContent = this._formatFileSize(file.size);
+
+        info.appendChild(nameEl);
+        info.appendChild(sizeEl);
+
+        const del = document.createElement('button');
+        del.className   = 'attach-remove';
+        del.textContent = '🗑️';
+        del.title       = 'Remove attachment';
+        del.onclick     = () => this._clearSelectedFile();
+
+        card.appendChild(info);
+        card.appendChild(del);
+        bar.appendChild(card);
     }
 
     _clearSelectedFile() {
@@ -1041,27 +1132,65 @@ class ChatManager {
         this.selectedFileType    = null;
         this.selectedFileSize    = null;
         if (this._previewUrl) { URL.revokeObjectURL(this._previewUrl); this._previewUrl = null; }
-        const ex = document.querySelector('#messageInput + img, #messageInput + .file-preview');
-        if (ex) ex.remove();
+        const bar = document.getElementById('attachBar');
+        if (bar) bar.innerHTML = '';
     }
 
-    _fileToDataUrl(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload  = (ev) => resolve(ev.target.result);
-            reader.onerror = () => reject(reader.error);
-            reader.readAsDataURL(file);
-        });
+    // Trim long names
+    _shortName(name, max = this.NAME_TRIM) {
+        const n = String(name || 'file');
+        if (n.length <= max) return n;
+        const dot = n.lastIndexOf('.');
+        const ext = (dot > 0 && n.length - dot <= 6) ? n.slice(dot) : '';
+        const keep = Math.max(4, max - ext.length);
+        return n.slice(0, keep) + '...' + ext;
+    }
+
+    // Encrypted chat check
+    _isEncryptedChat() {
+        const sid = this.state.currentChatId ? this._findServerIdByChatId(this.state.currentChatId) : null;
+        return !!(sid && this.state.serversCache[sid]?.encrypted);
     }
 
     // Storage upload
-    async _uploadToStorage(file) {
-        if (!this.state.storage) throw new Error('No storage');
+    async _uploadToStorage(file, onProgress) {
+        if (!this.state.storage) throw new Error('Storage unavailable');
         const chatId = this.state.currentChatId || 'misc';
         const safe   = String(file.name || 'file').replace(/[^\w.\-]+/g, '_').slice(0, 80);
         const path   = `uploads/${chatId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${safe}`;
-        const snap   = await this.state.storage.ref(path).put(file);
-        return snap.ref.getDownloadURL();
+        const task   = this.state.storage.ref(path).put(file);
+
+        if (onProgress) {
+            task.on('state_changed', snap => {
+                const pct = snap.totalBytes
+                    ? Math.round((snap.bytesTransferred / snap.totalBytes) * 100)
+                    : 0;
+                onProgress(pct);
+            });
+        }
+
+        await task;
+        const url = await task.snapshot.ref.getDownloadURL();
+        return { url, path };
+    }
+
+    // Storage path from URL
+    _storagePathFromUrl(url) {
+        const m = String(url || '').match(/\/o\/([^?]+)/);
+        return m ? decodeURIComponent(m[1]) : null;
+    }
+
+    // Remove stored file
+    async _deleteStorageFile(m) {
+        if (!this.state.storage) return;
+        const path = m.filePath || this._storagePathFromUrl(m.imageUrl || m.fileUrl);
+        if (!path) return;
+        try {
+            await this.state.storage.ref(path).delete();
+            console.log(`%c[CHAT] Storage file deleted: ${path}`, 'color:#22c55e;');
+        } catch (err) {
+            console.warn('[CHAT] Storage delete failed:', err);
+        }
     }
 
     _formatFileSize(bytes) {
@@ -1104,7 +1233,47 @@ class ChatManager {
             .catch(() => showCipher());
     }
 
-    _renderImage(bubble, src, initialLoad) {
+    // Decrypt attachment
+    _renderEncryptedFile(bubble, m, serverId, initialLoad) {
+        const holder = document.createElement('div');
+        bubble.appendChild(holder);
+
+        const key = serverId ? CryptoManager.getServerKey(serverId) : null;
+        if (!key) { this._renderLockedFile(holder, m.fileSize); return; }
+
+        holder.className   = 'file-decrypting';
+        holder.textContent = 'Decrypting attachment...';
+
+        Promise.all([
+            CryptoManager.decryptBytes(key, m.encFile),
+            m.encFileName ? CryptoManager.decryptText(key, m.encFileName) : Promise.resolve('file'),
+        ]).then(([buf, name]) => {
+            const type = m.fileType || 'application/octet-stream';
+            const url  = URL.createObjectURL(new Blob([buf], { type }));
+            this._blobUrls.push(url);
+
+            holder.className   = '';
+            holder.textContent = '';
+            if (type.startsWith('image/'))    this._renderImage(holder, url, initialLoad, name);
+            else if (this._isAudioFile(name)) this._renderAudio(holder, url, name, m.fileSize);
+            else if (this._isVideoFile(name)) this._renderVideo(holder, url, name, m.fileSize);
+            else                              this._renderFileRow(holder, url, name, m.fileSize);
+        }).catch(() => this._renderLockedFile(holder, m.fileSize));
+    }
+
+    _renderLockedFile(holder, size) {
+        holder.className   = 'msg-encrypted';
+        holder.textContent = `🔒 Encrypted attachment (${this._formatFileSize(size) || 'unknown size'}) — no valid key`;
+        holder.title       = 'Enter the server encryption key to open';
+    }
+
+    // Free decrypted blobs
+    _revokeBlobUrls() {
+        this._blobUrls.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} });
+        this._blobUrls = [];
+    }
+
+    _renderImage(bubble, src, initialLoad, downloadName) {
         const img  = document.createElement('img');
         img.src    = src;
         img.style.cursor = 'zoom-in';
@@ -1117,8 +1286,8 @@ class ChatManager {
             a.href = src;
             a.target = '_blank';
             a.rel = 'noopener';
-            a.download = 'img.png';
-            a.textContent = src.startsWith('http') ? 'Open / Copy link' : 'Download';
+            a.download = downloadName || 'img.png';
+            a.textContent = src.startsWith('http') ? 'Open' : 'Download';
             const big = document.createElement('img');
             big.src = src;
             big.className = 'modal-image';
@@ -1145,6 +1314,12 @@ class ChatManager {
         return audioExts.includes(ext);
     }
 
+    _isVideoFile(fileName) {
+        if (!fileName) return false;
+        const videoExts = ['mp4', 'webm', 'mov', 'm4v', 'ogv'];
+        return videoExts.includes(String(fileName).split('.').pop().toLowerCase());
+    }
+
     _renderFile(bubble, src, fileName, fileSize) {
         // Estimate legacy size
         let size = Number(fileSize) || 0;
@@ -1153,37 +1328,37 @@ class ChatManager {
             size = Math.round((src.length - (dataIdx + 1)) * 3 / 4);
         }
 
-        // Check if it's an audio file
-        if (this._isAudioFile(fileName)) {
-            this._renderAudio(bubble, src, fileName, size);
-            return;
-        }
+        if (this._isAudioFile(fileName)) { this._renderAudio(bubble, src, fileName, size); return; }
+        if (this._isVideoFile(fileName)) { this._renderVideo(bubble, src, fileName, size); return; }
+
+        this._renderFileRow(bubble, src, fileName, size);
+    }
+
+    _renderFileRow(bubble, src, fileName, size) {
+        const remote = String(src).startsWith('http');
 
         const link      = document.createElement('a');
         link.href       = src;
         link.className  = 'file-msg';
-        if (src.startsWith('http')) {
+        link.title      = fileName || 'file';
+        if (remote) {
             link.target = '_blank';
             link.rel    = 'noopener';
-            link.title  = 'Open file — right-click to copy link';
         } else {
             link.download = fileName || 'file';
-            link.title    = 'Download file';
         }
 
         const icon = document.createElement('img');
         icon.src       = 'gfx/file.png';
         icon.alt       = 'file';
         icon.className = 'file-icon';
-        icon.style.width = '40px';
-        icon.style.height = '50px';
 
         const info = document.createElement('span');
         info.className = 'file-info';
 
         const nameEl = document.createElement('span');
         nameEl.className   = 'file-name';
-        nameEl.textContent = fileName || 'file';
+        nameEl.textContent = this._shortName(fileName);
 
         const sizeEl = document.createElement('span');
         sizeEl.className   = 'file-size';
@@ -1194,6 +1369,45 @@ class ChatManager {
         link.appendChild(icon);
         link.appendChild(info);
         bubble.appendChild(link);
+    }
+
+    _renderVideo(bubble, src, fileName, fileSize) {
+        const wrap = document.createElement('div');
+        wrap.className = 'video-msg';
+
+        const video = document.createElement('video');
+        video.src       = src;
+        video.controls  = true;
+        video.preload   = 'metadata';
+        video.className = 'video-player';
+        video.onclick   = (e) => e.stopPropagation();
+
+        const meta = document.createElement('div');
+        meta.className = 'video-meta';
+
+        const nameEl = document.createElement('span');
+        nameEl.className   = 'file-name';
+        nameEl.textContent = this._shortName(fileName);
+        nameEl.title       = fileName || 'video';
+
+        const sizeEl = document.createElement('span');
+        sizeEl.className   = 'file-size';
+        sizeEl.textContent = this._formatFileSize(fileSize);
+
+        const dl = document.createElement('a');
+        dl.className   = 'video-download';
+        dl.href        = src;
+        dl.textContent = String(src).startsWith('http') ? 'Open' : 'Download';
+        if (String(src).startsWith('http')) { dl.target = '_blank'; dl.rel = 'noopener'; }
+        else dl.download = fileName || 'video';
+        dl.onclick = (e) => e.stopPropagation();
+
+        meta.appendChild(nameEl);
+        meta.appendChild(sizeEl);
+        meta.appendChild(dl);
+        wrap.appendChild(video);
+        wrap.appendChild(meta);
+        bubble.appendChild(wrap);
     }
 
     _renderAudio(bubble, src, fileName, fileSize) {
@@ -1308,7 +1522,7 @@ class ChatManager {
         const downloadBtn = document.createElement('button');
         downloadBtn.className = 'audio-download-icon-btn';
         downloadBtn.textContent = '↓';
-        downloadBtn.title = src.startsWith('http') ? 'Open / copy audio link' : 'Download audio file';
+        downloadBtn.title = src.startsWith('http') ? 'Open' : 'Download audio file';
         downloadBtn.onclick = (e) => {
             e.stopPropagation();
             const link = document.createElement('a');
@@ -1324,7 +1538,8 @@ class ChatManager {
 
         const nameEl = document.createElement('span');
         nameEl.className = 'audio-name';
-        nameEl.textContent = fileName || 'audio';
+        nameEl.textContent = this._shortName(fileName || 'audio');
+        nameEl.title = fileName || 'audio';
 
         const sizeEl = document.createElement('span');
         sizeEl.className = 'audio-size';
