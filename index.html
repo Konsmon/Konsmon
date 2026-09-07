@@ -22,16 +22,17 @@
 </head>
 <body>
     <h1 id="siteLogo" class="wavy-logo" onclick="location.reload()" style="width:96vw;max-width:1200px;margin:5px auto 0;color:var(--text); margin-left: 36px; cursor: pointer;" title="Refresh page">KONSMON CHAT WEBSITE</h1>
-    <div id="topControls" style="position:absolute; top:6px; right:40px; display:flex; gap:8px; align-items:center;">
+    <div id="topControls" style="position:absolute; top:6px; right:40px; display:flex; gap:8px; align-items:center; z-index:30;">
         <button id="mobileMenuBtn" class="btn btn-ghost">☰</button>
         <button id="btnSignin" class="btn btn-ghost">Sign in</button>
         <button id="btnSignup" class="btn btn-primary">Sign up</button>
     </div>
-    <div id="userPanel" style="position:absolute; top:4px; right:38px; display:none;">
+    <div id="userPanel" style="position:absolute; top:4px; right:40px; display:none; z-index:20;">
         <div id="userBox" style="background:var(--panel); border:1px solid var(--muted); padding:8px 14px; border-radius:8px; color:var(--text); cursor:pointer;">
             Logged in as <strong id="currentUserNick"></strong>
         </div>
-        <div id="userMenu" style="display:none; background:var(--card); border:1px solid var(--muted); border-radius:6px; margin-top:4px; padding:6px;">
+        <div id="userMenu" style="display:none; background:var(--card); border:1px solid var(--muted); border-radius:6px; margin-top:4px; padding:6px; position:absolute; right:0; top:42px; min-width:150px;">
+            <button id="adminPanelBtn" class="btn btn-ghost" style="display:none; width:100%; margin-bottom:6px;">Admin panel</button>
             <button id="logoutBtn" class="btn btn-ghost" style="width:100%;">Log out</button>
         </div>
     </div>
