@@ -403,7 +403,8 @@ class VoiceManager {
         this._teardownRnnoise();
         this.state.rawMicStream = rawStream;
 
-        const workletUrl = new URL('rnnoise-worklet.js', window.location.href).href;
+        const sharedBase = window.KONSMON_SHARED || 'shared/';
+        const workletUrl = new URL(sharedBase + 'rnnoise-worklet.js', window.location.href).href;
         if (!this.state.audioContext?.audioWorklet) {
             console.warn('[VOICE] RNNoise unavailable; using raw microphone.');
             return rawStream;

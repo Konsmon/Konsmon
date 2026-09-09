@@ -1,0 +1,98 @@
+{
+  "name": "konsmon",
+  "version": "1.0.0-beta.2",
+  "description": "Konsmon website + desktop client",
+  "homepage": "https://github.com/Konsmon/Konsmon#readme",
+  "bugs": {
+    "url": "https://github.com/Konsmon/Konsmon/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Konsmon/Konsmon.git"
+  },
+  "license": "ISC",
+  "author": "Konsmon Team",
+  "type": "commonjs",
+  "main": "client/electron-main.js",
+  "scripts": {
+    "build:rnnoise": "esbuild node_modules/@timephy/rnnoise-wasm/dist/NoiseSuppressorWorklet.js --bundle --format=esm --outfile=shared/rnnoise-worklet.js",
+    "prestart": "npm run build:rnnoise && dotnet build client\\native\\wasapi-loopback\\WasapiLoopback.csproj --configuration Release --nologo && powershell -NoProfile -Command \"& 'C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\MSBuild\\Current\\Bin\\MSBuild.exe' client\\native\\ApplicationLoopback\\cpp\\ApplicationLoopback.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v145 /m\"",
+    "start": "electron .",
+    "predist": "npm run build:rnnoise && dotnet publish client\\native\\wasapi-loopback\\WasapiLoopback.csproj --configuration Release --runtime win-x64 --self-contained true --nologo && powershell -NoProfile -Command \"& 'C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\MSBuild\\Current\\Bin\\MSBuild.exe' client\\native\\ApplicationLoopback\\cpp\\ApplicationLoopback.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v145 /m\"",
+    "dist": "electron-builder --win nsis",
+    "prerelease": "npm run predist",
+    "release": "electron-builder --win nsis --publish always",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "build": {
+    "appId": "space.konsmon.client",
+    "productName": "Konsmon",
+    "copyright": "Copyright © Konsmon Team",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "client/**/*",
+      "shared/**/*",
+      "!client/native/**",
+      "!client/dist/**",
+      "!client/build/**",
+      "!dist/**",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}"
+    ],
+    "extraResources": [
+      {
+        "from": "client/native/wasapi-loopback/bin/Release/net8.0-windows/win-x64/publish",
+        "to": "native/wasapi-loopback"
+      },
+      {
+        "from": "client/native/ApplicationLoopback/cpp/x64/Release/ApplicationLoopback.exe",
+        "to": "native/ApplicationLoopback.exe"
+      }
+    ],
+    "win": {
+      "icon": "client/gfx/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Konsmon",
+      "uninstallDisplayName": "Konsmon",
+      "installerIcon": "client/gfx/icon.ico",
+      "uninstallerIcon": "client/gfx/icon.ico",
+      "installerHeader": "client/build/installerHeader.bmp",
+      "installerSidebar": "client/build/installerSidebar.bmp",
+      "uninstallerSidebar": "client/build/uninstallerSidebar.bmp",
+      "installerHeaderIcon": "client/gfx/icon.ico",
+      "artifactName": "Konsmon-Setup-${version}.exe",
+      "differentialPackage": true
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Konsmon",
+        "repo": "KonsmonApp",
+        "releaseType": "draft"
+      }
+    ]
+  },
+  "devDependencies": {
+    "electron": "^41.7.1",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.28.2"
+  },
+  "dependencies": {
+    "@timephy/rnnoise-wasm": "^1.0.0",
+    "electron-updater": "^6.3.9"
+  }
+}

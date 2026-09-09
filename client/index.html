@@ -9,7 +9,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Konsmon Chat </title>
     <link rel="icon" href="gfx/radioactive_icon.png" type="image/x-icon">
-    <script>window.VERSION = '2.2.6';</script>
+    <script>window.VERSION = '1.0.1';</script>
     <script>document.write('<link rel="stylesheet" href="style.css?v=' + VERSION + '">');</script>
 
 
@@ -21,20 +21,33 @@
 
 </head>
 <body>
-    <h1 id="siteLogo" class="wavy-logo" onclick="location.reload()" style="width:96vw;max-width:1200px;margin:5px auto 0;color:var(--text); margin-left: 36px; cursor: pointer;" title="Refresh page">KONSMON CHAT WEBSITE</h1>
+    <div class="titlebar">
+        <div class="titlebar-drag-region"></div>
+        <div class="titlebar-beta">BETA</div>
+        <div class="window-controls">
+            <button id="minimizeWindow" class="window-control" aria-label="Minimize">&#x2212;</button>
+            <button id="maximizeWindow" class="window-control" aria-label="Maximize">&#x25A1;</button>
+            <button id="closeWindow" class="window-control window-control-close" aria-label="Close">&#x2715;</button>
+        </div>
+    </div>
+    <script>
+        document.getElementById('minimizeWindow').onclick = () => window.electronAPI?.minimize();
+        document.getElementById('maximizeWindow').onclick = () => window.electronAPI?.toggleMaximize();
+        document.getElementById('closeWindow').onclick = () => window.electronAPI?.close();
+    </script>
+    <h1 id="siteLogo" class="wavy-logo" onclick="location.reload()" style="width:96vw;max-width:1200px;margin:5px auto 0;color:var(--text); margin-left: 36px; cursor: pointer;" title="Refresh page">KONSMON CHAT CLIENT</h1>
     <div id="topControls" style="position:absolute; top:6px; right:40px; display:flex; gap:8px; align-items:center; z-index:30;">
         <button id="mobileMenuBtn" class="btn btn-ghost">☰</button>
-        <button id="clientDownload" class="btn btn-primary" onclick="location.href='https://github.com/Konsmon/KonsmonApp/releases/download/v1.0.0-beta.2/Konsmon-Setup-1.0.0-beta.2.exe'">Download Client</button>
         <button id="btnSignin" class="btn btn-ghost">Sign in</button>
         <button id="btnSignup" class="btn btn-primary">Sign up</button>
-        <div id="userPanel" style="display:none; position:relative;">
-            <div id="userBox" style="background:var(--panel); border:1px solid var(--muted); padding:8px 14px; border-radius:8px; color:var(--text); cursor:pointer;">
-                Logged in as <strong id="currentUserNick"></strong>
-            </div>
-            <div id="userMenu" style="display:none; background:var(--card); border:1px solid var(--muted); border-radius:6px; margin-top:4px; padding:6px; position:absolute; right:0; top:42px; min-width:150px;">
-                <button id="adminPanelBtn" class="btn btn-ghost" style="display:none; width:100%; margin-bottom:6px;">Admin panel</button>
-                <button id="logoutBtn" class="btn btn-ghost" style="width:100%;">Log out</button>
-            </div>
+    </div>
+    <div id="userPanel" style="position:absolute; top:4px; right:40px; display:none; z-index:20;">
+        <div id="userBox" style="background:var(--panel); border:1px solid var(--muted); padding:8px 14px; border-radius:8px; color:var(--text); cursor:pointer;">
+            Logged in as <strong id="currentUserNick"></strong>
+        </div>
+        <div id="userMenu" style="display:none; background:var(--card); border:1px solid var(--muted); border-radius:6px; margin-top:4px; padding:6px; position:absolute; right:0; top:42px; min-width:150px;">
+            <button id="adminPanelBtn" class="btn btn-ghost" style="display:none; width:100%; margin-bottom:6px;">Admin panel</button>
+            <button id="logoutBtn" class="btn btn-ghost" style="width:100%;">Log out</button>
         </div>
     </div>
 
@@ -54,6 +67,7 @@
             <div class="panel" id="mainPanel">
                 <div id="welcomeArea" style="width: 100%; display: flex; flex-direction: column; align-items: center; overflow-y: auto;">
                     <h1 style="font-size: 4rem; margin: 20px 0 40px 0; color: var(--text); letter-spacing: 4px; text-align: center;">☢ KONSMON ☢</h1>
+                    <p style="font-size: 1.5rem; color: var(--text); letter-spacing: 4px; text-align: center;">KONSMON CLIENT IS CURRENTLY IN BETA, EXPECT THINGS TO NOT WORK AS INTENDED</p>
 
                     <div class="welcome" style="margin: 0 auto 20px auto;">
                         <h3>Choose a chat or create new one</h3>
@@ -69,11 +83,11 @@
                     </div>
 
                     <div class="welcome" style="margin: 0 auto; display: flex; flex-direction: column; align-items: center;">
-                        <h3>What is konsmon?</h3>
+                        <h3>What is Konsmon Client?</h3>
                         <p style="line-height: 1.6; opacity: 0.9;">
-                            Konsmon is an unregulated chating website where users can send anything in their private or public servers without any registration, simply text or talk as anons.
-                            You can create your own server, make it public or private, there are no rules. For more info and updates, visit the website info sub domain: 
-                            <a href="info.html" target="_blank">konsmon/info.space</a>
+                            Konsmon Client is a desktop application based on the Konsmon Website (an unregulated chatting website), with more functions that would normally be limited by the browser.
+                            You can create your own server, make it public or private, there are no rules. For more info and updates, click bellow: 
+                            <br><a href="info.html" target="_blank">MORE INFO</a>
                         </p>
                         
 
@@ -113,13 +127,23 @@
         <div class="modal" id="modalContent"></div>
     </div>
 
+    <div id="updateToast" class="update-toast" hidden>
+        <div class="update-toast-title" id="updateToastTitle">Update available</div>
+        <div class="update-toast-text" id="updateToastText"></div>
+        <div class="update-toast-track" id="updateToastTrack"><div class="update-toast-fill" id="updateToastFill"></div></div>
+        <div class="update-toast-actions" id="updateToastActions" hidden>
+            <button id="updateLater" class="btn btn-ghost">Later</button>
+            <button id="updateRestart" class="btn btn-primary">Restart now</button>
+        </div>
+    </div>
+
 
 
     <!-- Load order -->
-    <script>window.KONSMON_SHARED = 'shared/';</script>
+    <script>window.KONSMON_SHARED = '../shared/';</script>
     <script>
     (function (v) {
-        var shared = window.KONSMON_SHARED || 'shared/';
+        var shared = window.KONSMON_SHARED || '../shared/';
         var sharedFiles = ['AppState.js', 'CryptoManager.js', 'ModalManager.js', 'AuthManager.js',
             'ChatManager.js', 'VoiceManager.js'];
         var localFiles = ['config.js', 'StreamManager.js', 'main.js'];

@@ -1,0 +1,39 @@
+<!-- UPDATES HISTORY -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Konsmon - Updates</title>
+    <link rel="icon" href="gfx/radioactive_icon.png" type="image/x-icon">
+    <link rel="stylesheet" href="updates.css">
+</head>
+<body>
+    <div class="titlebar">
+        <div class="titlebar-drag-region"></div>
+        <div class="titlebar-beta">BETA</div>
+        <div class="window-controls">
+            <button id="minimizeWindow" class="window-control" aria-label="Minimize">&#x2212;</button>
+            <button id="maximizeWindow" class="window-control" aria-label="Maximize">&#x25A1;</button>
+            <button id="closeWindow" class="window-control window-control-close" aria-label="Close">&#x2715;</button>
+        </div>
+    </div>
+    <script>
+        document.getElementById('minimizeWindow').onclick = () => window.electronAPI?.minimize();
+        document.getElementById('maximizeWindow').onclick = () => window.electronAPI?.toggleMaximize();
+        document.getElementById('closeWindow').onclick = () => window.electronAPI?.close();
+    </script>
+
+    <div class="container">
+        <h1>08.09.2026 — b1.0</h1>
+        <ul>
+            <li>Initial release of the beta version</li>
+            <li>Added support for sharing audio while screensharing</li>
+            <li>Fixed certain UI issues</li>
+            <li>Slight QoL improvements</li>
+        </ul>
+        <br><br><br>
+        <a href="index.html" class="back-link">← Return to Konsmon Client</a>
+    </div>
+</body>
+</html>

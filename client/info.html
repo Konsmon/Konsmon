@@ -1,0 +1,78 @@
+<!-- WEB INFO -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Konsmon - Info</title>
+    <link rel="icon" href="gfx/radioactive_icon.png" type="image/x-icon">
+    <link rel="stylesheet" href="info.css">
+</head>
+<body>
+    <div class="titlebar">
+        <div class="titlebar-drag-region"></div>
+        <div class="titlebar-beta">BETA</div>
+        <div class="window-controls">
+            <button id="minimizeWindow" class="window-control" aria-label="Minimize">&#x2212;</button>
+            <button id="maximizeWindow" class="window-control" aria-label="Maximize">&#x25A1;</button>
+            <button id="closeWindow" class="window-control window-control-close" aria-label="Close">&#x2715;</button>
+        </div>
+    </div>
+    <script>
+        document.getElementById('minimizeWindow').onclick = () => window.electronAPI?.minimize();
+        document.getElementById('maximizeWindow').onclick = () => window.electronAPI?.toggleMaximize();
+        document.getElementById('closeWindow').onclick = () => window.electronAPI?.close();
+    </script>
+
+    <div class="container">
+        <h1>What is KONSMON?</h1>
+
+        <p>
+            Konsmon.space is a DIY chatting website. Users can create their own private or public servers with text and voice channels.
+            There is also a possibility to stream your screen to other users. You might wonder: why create such a website
+            when apps like Discord or TeamSpeak exist? The answer is simple and straightforward. It was created with the idea of making
+            a free and unregulated alternative for small and specific purposes, e.g., university groups, etc.
+        </p>
+
+        <p>
+            If you are interested in more technical details, you can check out the GitHub repository:
+            <p href="https://github.com/Konsmon/Konsmon">github.com/Konsmon/Konsmon</p>
+        </p>
+        <h1>What is KONSMON Client?</h1>
+
+        <p>
+            The Konsmon Client is a desktop application based on the Konsmon Website. While working in par with the website, it provides additional features that are not available in the browser version while also allowing a better experience for the user.
+            The Konsmon Client and Webiste are developed seperately and might differ in features and functionality, but they will always be compatible with each other in the most important aspects, such as chatting and voice communication.
+            <br><p style="color: red;">Konsmon Client is very early in development and will contain bugs and security flaws. Please report any issues you encounter to the developers.</a>
+        </p>
+
+        <h1>More Info</h1>
+
+        <p>
+            If you are interested in more technical details, you can check out the websites GitHub repository:
+            <a href="https://github.com/Konsmon/Konsmon">github.com/Konsmon/Konsmon</a>
+            <br>or the clients GitHub repository:
+            <br><a href="https://github.com/Konsmon/Konsmonapp">github.com/Konsmon/Konsmonapp</a>
+        </p>
+        <p>
+            The website was created with love for freedom of speech by:
+            <strong>Frans</strong> and <strong>JulekJestem</strong>.
+        </p>
+
+        <br>
+        <b>Here is an easy step-by-step tutorial on how to use the website:</b>
+        <ol>
+            <li>Go to the main page and click "Create Server".</li>
+            <li>Choose a name and password for your server (password is optional).</li>
+            <li>Click "Create" and wait a moment.</li>
+            <li>And that's all! Now, you can customize your server and create more voice or text chats.</li>
+        </ol>
+
+        <p>Best regards from Konsmon devs ;3</p>
+        <a href="updates.html">Client Update History</a>
+        <br>
+        <a href="index.html" class="back-link">← Return to Konsmon Client</a>
+    </div>
+
+</body>
+</html>

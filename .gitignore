@@ -1,1 +1,20 @@
 config.js
+shared/config.js
+client/config.js
+node_modules
+dist
+client/dist
+tkn.txt
+
+# Nested old website copy
+Konsmon/
+
+# Native build outputs
+client/native/wasapi-loopback/bin/
+client/native/wasapi-loopback/obj/
+client/native/ApplicationLoopback/**/x64/
+client/native/ApplicationLoopback/**/Win32/
+client/native/ApplicationLoopback/**/ARM*/
+
+# Do not vendor the full Windows classic samples mirror
+client/native/Windows-classic-samples/
