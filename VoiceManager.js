@@ -30,21 +30,32 @@ class VoiceManager {
         if (this.state.currentVoiceChatId) this.leaveVoiceChat();
 
         if (!this.state.audioContext) {
-            this.state.audioContext = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+            // RNNoise expects ~48 kHz frames; prefer that rate when the device allows it.
+            try {
+                this.state.audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                    latencyHint: 'interactive',
+                    sampleRate: 48000,
+                });
+            } catch (e) {
+                this.state.audioContext = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+            }
         }
         if (this.state.audioContext.state === 'suspended') await this.state.audioContext.resume();
 
         try {
-            this.state.localStream = await navigator.mediaDevices.getUserMedia({
+            // Browser NS is turned off so RNNoise owns denoising; AEC stays on for speakers.
+            const rawMic = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     deviceId: this.state.currentMicId !== 'default' ? { exact: this.state.currentMicId } : undefined,
                     echoCancellation: true,
-                    noiseSuppression: true,
+                    noiseSuppression: false,
                     autoGainControl: false,
+                    channelCount: 1,
                     latency: 0,
                 },
                 video: false,
             });
+            this.state.localStream = await this._applyRnnoise(rawMic);
             console.log('%c[VOICE] Microphone access GRANTED', 'color:#22c55e;');
         } catch (err) {
             console.warn('[VOICE] Microphone access DENIED or not found. Joining as listener.', err);
@@ -123,6 +134,7 @@ class VoiceManager {
         if (this.state.pingInterval) { clearInterval(this.state.pingInterval); this.state.pingInterval = null; }
         if (this.state.vadInterval)  { clearInterval(this.state.vadInterval);  this.state.vadInterval  = null; }
 
+        this._teardownRnnoise();
         if (this.state.localStream) { this.state.localStream.getTracks().forEach(t => t.stop()); this.state.localStream = null; }
 
         Object.values(this.state.visualizerStreams).forEach(s => s.getTracks().forEach(t => t.stop()));
@@ -383,6 +395,65 @@ class VoiceManager {
         const audioEl = document.getElementById('audio-' + leftUid);
         if (audioEl) audioEl.remove();
         if (this.state.peers[leftUid]) { this.state.peers[leftUid].close(); delete this.state.peers[leftUid]; }
+    }
+
+    // Mic → RNNoise AudioWorklet → MediaStreamDestination (what WebRTC sends).
+    // Falls back to the raw mic if the worklet cannot load, so voice still works.
+    async _applyRnnoise(rawStream) {
+        this._teardownRnnoise();
+        this.state.rawMicStream = rawStream;
+
+        const workletUrl = new URL('rnnoise-worklet.js', window.location.href).href;
+        if (!this.state.audioContext?.audioWorklet) {
+            console.warn('[VOICE] RNNoise unavailable; using raw microphone.');
+            return rawStream;
+        }
+
+        try {
+            if (!VoiceManager._rnnoiseModuleReady) {
+                VoiceManager._rnnoiseModuleReady = this.state.audioContext.audioWorklet
+                    .addModule(workletUrl)
+                    .catch(error => {
+                        VoiceManager._rnnoiseModuleReady = null;
+                        throw error;
+                    });
+            }
+            await VoiceManager._rnnoiseModuleReady;
+
+            const source = this.state.audioContext.createMediaStreamSource(rawStream);
+            const node = new AudioWorkletNode(this.state.audioContext, 'NoiseSuppressorWorklet', {
+                numberOfInputs: 1,
+                numberOfOutputs: 1,
+                channelCount: 1,
+            });
+            const dest = this.state.audioContext.createMediaStreamDestination();
+            source.connect(node);
+            node.connect(dest);
+
+            this.state.rnnoiseSource = source;
+            this.state.rnnoiseNode = node;
+            this.state.rnnoiseDest = dest;
+            console.log('%c[VOICE] RNNoise noise suppression ON', 'color:#22c55e;');
+            return dest.stream;
+        } catch (error) {
+            console.warn('[VOICE] RNNoise failed; using raw microphone.', error);
+            this._teardownRnnoise({ keepRaw: true });
+            return rawStream;
+        }
+    }
+
+    _teardownRnnoise({ keepRaw = false } = {}) {
+        try { this.state.rnnoiseSource?.disconnect(); } catch (e) {}
+        try { this.state.rnnoiseNode?.disconnect(); } catch (e) {}
+        try { this.state.rnnoiseDest?.disconnect(); } catch (e) {}
+        this.state.rnnoiseSource = null;
+        this.state.rnnoiseNode = null;
+        this.state.rnnoiseDest = null;
+
+        if (!keepRaw && this.state.rawMicStream) {
+            this.state.rawMicStream.getTracks().forEach(t => t.stop());
+            this.state.rawMicStream = null;
+        }
     }
 
     // Voice activity detection
