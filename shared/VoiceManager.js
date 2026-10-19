@@ -194,14 +194,16 @@ class VoiceManager {
         const amIAdmin    = this.auth.isAdmin();
         const isStreaming = uData.isStreaming === true;
 
-        let displayNick = uData.nick;
-        if (this.state.usersCacheById[uid]?.admin === 1) displayNick += ' [ADMIN]';
+        const displayNick = uData.nick;
+        const adminBadge = this.state.usersCacheById[uid]?.admin === 1
+            ? ' <span class="material-symbols-outlined admin-badge" title="Admin">shield_person</span>'
+            : '';
 
         const liveIcon = isStreaming
             ? '<span style="color:#ef4444;font-weight:bold;font-size:10px;margin-left:4px;">[LIVE]</span>'
             : '';
 
-        userRow.innerHTML = `<span class="tree-prefix">|_</span> <span id="voice-nick-${uid}" class="tree-user-nick">${escapeHtml(displayNick)} ${liveIcon}</span>`;
+        userRow.innerHTML = `<span class="tree-prefix">|_</span> <span id="voice-nick-${uid}" class="tree-user-nick">${escapeHtml(displayNick)}${adminBadge} ${liveIcon}</span>`;
 
         if ((!isMe && isStreaming) || (isMe && this.state.localScreenStream)) {
             userRow.style.cursor = 'pointer';

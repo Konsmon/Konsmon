@@ -304,7 +304,9 @@ class AuthManager {
         for (const user of users) {
             const uid = user.uid || '';
             const nick = escapeHtml(String(user.nick || 'Unknown'));
-            const adminBadge = user.admin === 1 ? ' <span style="opacity:0.7;">[ADMIN]</span>' : '';
+            const adminBadge = user.admin === 1
+                ? ' <span class="material-symbols-outlined admin-badge" title="Admin">shield_person</span>'
+                : '';
             const latestIp = await this.getLatestUserIpRecord(uid);
             const ipStatus = latestIp ? `Recorded ${new Date(latestIp.lastSeenAt || latestIp.recordedAt).toLocaleString()}` : 'No IP recorded';
             const ipAction = Number(latestIp?.ipBanned) === 1 ? 'unban' : 'ban';

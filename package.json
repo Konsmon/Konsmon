@@ -1,6 +1,6 @@
 {
   "name": "konsmon",
-  "version": "1.0.1-beta.1",
+  "version": "1.0.1-beta.2",
   "description": "Konsmon website + desktop client",
   "homepage": "https://github.com/Konsmon/Konsmon#readme",
   "bugs": {
@@ -82,7 +82,7 @@
         "provider": "github",
         "owner": "Konsmon",
         "repo": "Konsmon",
-        "releaseType": "draft"
+        "releaseType": "release"
       }
     ]
   },

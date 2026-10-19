@@ -781,8 +781,8 @@ class ChatManager {
                 ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                 : (m.time ? String(m.time).split(' ').pop() : '');
 
-            let displayNick = m.nickname || 'Anon';
-            if (m.userId && this.state.usersCacheById[m.userId]?.admin === 1) displayNick += ' [ADMIN]';
+            const displayNick = m.nickname || 'Anon';
+            const isMsgAdmin  = !!(m.userId && this.state.usersCacheById[m.userId]?.admin === 1);
 
             const msgDate  = new Date(m.createdAt || Date.now());
             const dateOnly = msgDate.toLocaleDateString();
@@ -803,6 +803,14 @@ class ChatManager {
             const nickSpan = document.createElement('span');
             nickSpan.textContent = displayNick;
             nickSpan.className   = 'msg-nick' + (m.userId ? ' msg-nick-registered' : '');
+            if (isMsgAdmin) {
+                const adminIcon = document.createElement('span');
+                adminIcon.className = 'material-symbols-outlined admin-badge';
+                adminIcon.title = 'Admin';
+                adminIcon.textContent = 'shield_person';
+                nickSpan.appendChild(document.createTextNode(' '));
+                nickSpan.appendChild(adminIcon);
+            }
             const timeSpan = document.createElement('span');
             timeSpan.textContent = ` [${timeStr}]`;
             timeSpan.className   = 'msg-time';

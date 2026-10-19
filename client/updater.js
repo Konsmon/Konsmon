@@ -42,6 +42,7 @@ function initUpdater() {
   autoUpdater.logger = console;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.allowPrerelease = true;
 
   autoUpdater.on('checking-for-update', () => setStatus('checking'));
   autoUpdater.on('update-not-available', () => setStatus('up-to-date'));
